@@ -1,0 +1,9 @@
+{
+  "serverName": "deno-mcp-demo",
+  "version": "0.1.0",
+  "httpPort": 8787,
+  "features": {
+    "enableHttpAdmin": true,
+    "enableCodeEditing": true
+  }
+} 
