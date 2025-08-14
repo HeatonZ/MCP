@@ -60,6 +60,8 @@ function mergeConfig(base: AppConfig, over: Partial<AppConfig>): AppConfig {
 		security,
 		cors,
 		logging,
+		// 保留上游配置（若覆盖层未提供则使用基础层）
+		upstreams: over.upstreams ?? (base as AppConfig).upstreams,
 	};
 }
 

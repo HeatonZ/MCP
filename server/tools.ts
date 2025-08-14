@@ -4,7 +4,7 @@ import { fsTools } from "./tools/fs.ts";
 import { httpTools } from "./tools/http.ts";
 import { kvTools } from "./tools/kv.ts";
 import { PluginManager } from "./core/plugin/manager.ts";
-import { listUpstreamToolsAsPlugin } from "./upstream/index.ts";
+import { initUpstreams, listUpstreamToolsAsPlugin } from "./upstream/index.ts";
 
 const pluginManager = new PluginManager();
 
@@ -25,10 +25,12 @@ export async function getAllTools(): Promise<ToolSpec[]> {
 }
 
 export async function initPlugins() {
-	await pluginManager.initAll();
-	// 初始化上游并把上游工具注册为动态插件
-	const upstreamPlugin = await listUpstreamToolsAsPlugin();
-	if (upstreamPlugin) pluginManager.registerDynamic(upstreamPlugin);
+    await pluginManager.initAll();
+    // 初始化上游连接
+    await initUpstreams();
+    // 初始化上游并把上游工具注册为动态插件
+    const upstreamPlugin = await listUpstreamToolsAsPlugin();
+    if (upstreamPlugin) pluginManager.registerDynamic(upstreamPlugin);
 }
 
 export async function disposePlugins() {

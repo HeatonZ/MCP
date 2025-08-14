@@ -5,5 +5,15 @@
   "features": {
     "enableHttpAdmin": true,
     "enableCodeEditing": true
-  }
+  },
+  "upstreams": [
+    {
+      "name": "context7-proxy",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "namespace": "context7",
+      "enabled": true
+    }
+  ]
 } 

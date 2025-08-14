@@ -1,0 +1,21 @@
+---
+alwaysApply: true
+---
+
+严格遵守以下约定
+
+* 整体保持
+- 不需要测试
+- 可用性
+- 配置化
+- 模块化
+- 项目结构清晰
+- 易用性
+
+* 项目结构
+- 插件统一在server/plugins管理
+- 工具统一在server/tools管理
+- 类型统一在shared/types管理
+- 配置统一在server/config管理
+- 日志统一在server/logger管理
+- 错误处理统一在server/error管理

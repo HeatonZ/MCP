@@ -17,9 +17,7 @@
     "dev:server": "deno run -A --import-map=import_map.json --watch=server,config server/main.ts",
     "dev:server:stdio": "deno run -A --import-map=import_map.json --watch=server,config server/stdio.ts",
     "build:server": "deno compile -A --import-map=import_map.json --output=dist/z-mcp-server server/stdio.ts",
-    "test:backend": "deno test -A --unstable-kv --import-map=import_map.json server/tests",
-    "test:frontend": "cd frontend && pnpm test",
-    "test": "deno task test:backend && deno task test:frontend",
+    
     "typecheck": "deno check --import-map=import_map.json server/main.ts server/stdio.ts",
     "version:set": "deno run -A scripts/version.ts set",
     "version:bump:patch": "deno run -A scripts/version.ts bump patch",

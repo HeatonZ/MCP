@@ -1,0 +1,18 @@
+{
+  "upstreams": [
+    {
+      "name": "context7-proxy-local",
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "namespace": "context7",
+      "enabled": true,
+      "env": {
+        "UPSTASH_REDIS_REST_URL": "${UPSTASH_REDIS_REST_URL}",
+        "UPSTASH_REDIS_REST_TOKEN": "${UPSTASH_REDIS_REST_TOKEN}"
+      }
+    }
+  ]
+}
+
+
