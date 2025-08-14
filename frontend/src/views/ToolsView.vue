@@ -12,7 +12,10 @@
       </el-space>
       <el-divider />
       <div v-if="currentTool">
-        <div class="tool-desc">{{ currentTool.description }}</div>
+        <div class="tool-desc">
+          {{ currentTool.description }}
+          <span v-if="sourceInfo" style="margin-left:8px; color:#999">[来源: {{ sourceInfo.namespace }} | 延迟: ~{{ sourceInfo.avgLatencyMs }}ms]</span>
+        </div>
         <div class="tool-form">
           <div v-for="(type, key) in currentTool.inputSchema || {}" :key="key" class="form-row">
             <label>{{ key }} ({{ type }})</label>
@@ -44,11 +47,25 @@ const toolArgsText = ref<Record<string, string>>({});
 const toolArgsNumber = ref<Record<string, number | null>>({});
 const toolResult = ref("");
 const currentTool = computed(() => tools.value.find(t => t.name === selectedToolName.value));
+const upstreamStatus = ref<Record<string, { namespace?: string; avgLatencyMs: number }>>({});
+const sourceInfo = computed(() => {
+  const t = currentTool.value;
+  if (!t) return null as null | { namespace?: string; avgLatencyMs: number };
+  const ns = t.name.includes("/") ? t.name.split("/")[0] : undefined;
+  const match = Object.values(upstreamStatus.value).find(s => s.namespace === ns);
+  return match || (ns ? { namespace: ns, avgLatencyMs: 0 } : null);
+});
 
 async function loadTools() {
   const res = await fetch("/api/tools");
   const json = await res.json();
   tools.value = json.tools ?? [];
+  try {
+    const st = await fetch('/api/upstreams/status').then(r => r.json());
+    const map: Record<string, { namespace?: string; avgLatencyMs: number }> = {};
+    for (const it of (st.upstreams ?? [])) map[it.name] = { namespace: it.namespace, avgLatencyMs: it.avgLatencyMs };
+    upstreamStatus.value = map;
+  } catch { /* ignore */ }
   if (tools.value.length && !selectedToolName.value) {
     selectedToolName.value = tools.value[0].name;
     onSelectTool();

@@ -8,6 +8,7 @@
       <el-table :data="rows" style="width: 100%">
         <el-table-column prop="name" label="名称" width="160" />
         <el-table-column prop="transport" label="传输" width="100" />
+        <el-table-column prop="namespace" label="命名空间" width="160" />
         <el-table-column prop="connected" label="连接" width="90">
           <template #default="{ row }">
             <el-tag :type="row.connected ? 'success' : 'danger'">{{ row.connected ? '已连接' : '未连接' }}</el-tag>
@@ -20,6 +21,11 @@
         <el-table-column prop="avgLatencyMs" label="平均延迟(ms)" width="140" />
         <el-table-column prop="reconnects" label="重连次数" width="100" />
         <el-table-column prop="lastError" label="最后错误" />
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <el-button size="small" :disabled="!row.name" @click="reconnect(row.name)">重连</el-button>
+          </template>
+        </el-table-column>
       </el-table>
     </el-card>
   </div>
@@ -33,6 +39,7 @@ import { ElMessage } from 'element-plus';
 type Row = {
   name: string;
   transport: string;
+  namespace?: string;
   connected: boolean;
   toolCount: number;
   resourceCount: number;
@@ -56,6 +63,11 @@ async function load() {
 }
 
 onMounted(load);
+
+async function reconnect(name: string) {
+  await fetch(`/api/upstreams/reconnect?name=${encodeURIComponent(name)}`, { method: 'POST' });
+  await load();
+}
 </script>
 
 <style scoped>

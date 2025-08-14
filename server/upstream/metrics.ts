@@ -1,6 +1,7 @@
 type UpstreamCounters = {
   name: string;
   transport: string;
+  namespace?: string;
   connected: boolean;
   connectedAt?: number;
   reconnects: number;
@@ -18,6 +19,7 @@ export function initUpstreamMetrics(name: string, transport: string) {
   store.set(name, {
     name,
     transport,
+    namespace: undefined,
     connected: false,
     reconnects: 0,
     toolCount: 0,
@@ -68,6 +70,12 @@ export function observeLatency(name: string, ms: number) {
 
 export function getUpstreamStatus() {
   return Array.from(store.values());
+}
+
+export function setNamespace(name: string, namespace: string) {
+  const m = store.get(name);
+  if (!m) return;
+  m.namespace = namespace;
 }
 
 

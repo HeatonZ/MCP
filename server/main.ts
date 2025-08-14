@@ -5,6 +5,7 @@ import { createMcpServer } from "@server/mcp.ts";
 import { createSseEndpoints } from "@server/transport/http_sse.ts";
 import { handleHttpRpc } from "@server/transport/http_stream.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
+import { reconnectUpstream } from "@server/upstream/index.ts";
 import { createLogStream, getSnapshot, logError, logInfo } from "@server/logger.ts";
 import { safeResolve, listFilesRecursive } from "@server/security/paths.ts";
 
@@ -57,7 +58,7 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
       }
       const server = await createMcpServer();
       const res = await handleHttpRpc(server, req);
-      return new Response(await res.text(), { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
+      return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
     }
     if (req.method === "GET") {
       if (currentCfg.features?.enableMcpSse === false) {
@@ -99,6 +100,14 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
   if (url.pathname === "/api/upstreams/status") {
     const out = await handleRpcPayload(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "upstreams/status" }));
     return new Response(out, { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+  }
+
+  if (url.pathname === "/api/upstreams/reconnect") {
+    if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405, headers: corsHeaders(origin, cors) });
+    const name = new URL(req.url).searchParams.get("name") ?? "";
+    if (!name) return new Response(JSON.stringify({ ok: false, error: "missing name" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+    const ok = await reconnectUpstream(name);
+    return new Response(JSON.stringify({ ok }), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
   }
 
   if (url.pathname.startsWith("/api/") && currentCfg.features?.enableHttpAdmin === false) {

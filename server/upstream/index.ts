@@ -6,7 +6,7 @@ import type { ToolSpec } from "@shared/types/tool.ts";
 // MCP TS SDK client imports
 import { Client } from "npm:@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "npm:@modelcontextprotocol/sdk/client/stdio.js";
-import { initUpstreamMetrics, markConnected, markDisconnected, setCounts } from "@server/upstream/metrics.ts";
+import { initUpstreamMetrics, markConnected, markDisconnected, setCounts, setNamespace } from "@server/upstream/metrics.ts";
 
 type UpstreamInstance = {
   name: string;
@@ -111,9 +111,48 @@ function sdkClientAdapter(c: Client): McpClientLike {
 }
 
 function httpClientAdapter(url: string, headers?: Record<string, string>): McpClientLike {
+  async function readNdjsonFirstLine(res: Response): Promise<unknown> {
+    const body = res.body;
+    if (!body) return null;
+    const reader = body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value ?? "";
+      for (;;) {
+        const lf = buffer.indexOf("\n");
+        if (lf < 0) break;
+        const line = buffer.slice(0, lf).replace(/\r$/, "").trim();
+        buffer = buffer.slice(lf + 1);
+        if (line) {
+          try { return JSON.parse(line); } catch { return line; }
+        }
+      }
+    }
+    const last = buffer.trim();
+    if (last) { try { return JSON.parse(last); } catch { return last; } }
+    return null;
+  }
+
   async function rpc(method: string, params?: Record<string, unknown>): Promise<{ result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } }>{
-    const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method, params });
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", ...(headers ?? {}) }, body });
+    const defaultHeaders: Record<string, string> = {
+      Accept: "application/x-ndjson, application/json",
+    };
+    const merged: Record<string, string> = { ...defaultHeaders, ...(headers ?? {}) };
+    const contentType = Object.keys(merged).find(k => k.toLowerCase() === "content-type") ? (merged[Object.keys(merged).find(k => k.toLowerCase() === "content-type") as string] || "") : "";
+    if (!contentType) merged["Content-Type"] = "application/json";
+
+    const payload = { jsonrpc: "2.0", id: 1, method, params } as Record<string, unknown>;
+    const useNdjsonRequest = (merged["Content-Type"] || merged[Object.keys(merged).find(k => k.toLowerCase() === "content-type") as string] || "").toLowerCase().includes("application/x-ndjson");
+    const body = useNdjsonRequest ? JSON.stringify(payload) + "\n" : JSON.stringify(payload);
+
+    const res = await fetch(url, { method: "POST", headers: merged, body });
+    const respCt = (res.headers.get("Content-Type") || "").toLowerCase();
+    if (respCt.includes("application/x-ndjson")) {
+      const first = await readNdjsonFirstLine(res);
+      return (first ?? {}) as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
+    }
     const json = await res.json();
     return json as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
   }
@@ -198,11 +237,52 @@ export async function initUpstreams(): Promise<void> {
       for (const t of tools) toolNames.push(t.name);
       logInfo("upstream", "connected", { name: u.name, namespace: ns, tools: toolNames } as Record<string, unknown>);
       markConnected(u.name);
+      setNamespace(u.name, ns);
       setCounts(u.name, { toolCount: tools.length });
     } catch (e) {
       logError("upstream", "connect failed", { name: u.name, error: String(e) } as Record<string, unknown>);
       markDisconnected(u.name, String(e));
     }
+  }
+}
+
+export async function reconnectUpstream(name: string): Promise<boolean> {
+  const cfg = await ensureConfig();
+  const u = (cfg.upstreams ?? []).find(x => x.name === name && x.enabled !== false);
+  if (!u) return false;
+  try {
+    // dispose old
+    const old = upstreams.get(name);
+    if (old?.transport && typeof (old.transport as unknown as { close?: () => Promise<void> }).close === "function") {
+      try { await (old.transport as unknown as { close: () => Promise<void> }).close(); } catch { /* ignore */ }
+    }
+    upstreams.delete(name);
+    // re-init single upstream
+    initUpstreamMetrics(u.name, u.transport);
+    const ns = u.namespace || u.name;
+    let clientLike: McpClientLike;
+    let transport: StdioClientTransport | undefined = undefined;
+    if (isStdio(u)) {
+      const t = new StdioClientTransport({ command: u.command, args: u.args ?? [], cwd: u.cwd, env: u.env });
+      const client = new Client({ name: `proxy-${u.name}`, version: cfg.version });
+      await client.connect(t);
+      clientLike = sdkClientAdapter(client);
+      transport = t;
+    } else if (isHttp(u) || isSse(u) || isWs(u)) {
+      const httpUrl = u.url;
+      const headers = u.headers;
+      clientLike = httpClientAdapter(httpUrl, headers);
+    } else {
+      return false;
+    }
+    const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns);
+    upstreams.set(u.name, { name: u.name, namespace: ns, client: clientLike, transport, tools });
+    markConnected(u.name);
+    setNamespace(u.name, ns);
+    setCounts(u.name, { toolCount: tools.length });
+    return true;
+  } catch {
+    return false;
   }
 }
 
