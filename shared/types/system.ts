@@ -5,6 +5,10 @@ export type AppConfig = {
 	features: {
 		enableHttpAdmin: boolean;
 		enableCodeEditing: boolean;
+		/** 是否启用 MCP 的 SSE 传输端点 */
+		enableMcpSse?: boolean;
+		/** 是否启用 MCP 的纯 HTTP（一次性）传输端点 */
+		enableMcpHttp?: boolean;
 	};
 	/**
 	 * 上游 MCP 服务配置列表

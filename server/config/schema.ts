@@ -7,6 +7,8 @@ export const AppConfigSchema = z.object({
 	features: z.object({
 		enableHttpAdmin: z.boolean(),
 		enableCodeEditing: z.boolean(),
+		enableMcpSse: z.boolean().optional(),
+		enableMcpHttp: z.boolean().optional(),
 	}),
   upstreams: z.array(z.object({
     name: z.string().min(1),

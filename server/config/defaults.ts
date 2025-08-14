@@ -7,6 +7,8 @@ export const defaultConfig: AppConfig = {
 	features: {
 		enableHttpAdmin: true,
 		enableCodeEditing: true,
+		enableMcpSse: true,
+		enableMcpHttp: true,
 	},
 	security: {
 		allowedDirs: ["server", "config"],

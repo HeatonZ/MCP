@@ -19,9 +19,15 @@ export function applyEnvOverrides(cfg: AppConfig): AppConfig {
 		out.security.http.maxResponseBytes = maxBytes ? Number(maxBytes) : out.security.http.maxResponseBytes;
 	}
 	const cors = Deno.env.get("MCP_CORS_ORIGINS");
-	if (cors) out.cors = { ...(out.cors ?? {}), allowedOrigins: splitList(cors) } as any;
+    if (cors) out.cors = { ...(out.cors ?? {}), allowedOrigins: splitList(cors) } as AppConfig["cors"];
 	const maxLogs = Deno.env.get("MCP_MAX_LOGS");
 	if (maxLogs) out.logging = { ...(out.logging ?? {}), maxLogs: Number(maxLogs) };
+
+	// 传输开关（可选）
+	const sse = Deno.env.get("MCP_ENABLE_SSE");
+	if (sse != null) out.features.enableMcpSse = sse === "1" || sse.toLowerCase() === "true";
+	const http = Deno.env.get("MCP_ENABLE_HTTP");
+	if (http != null) out.features.enableMcpHttp = http === "1" || http.toLowerCase() === "true";
 	return out;
 }
 

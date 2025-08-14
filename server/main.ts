@@ -1,6 +1,9 @@
 import { loadConfig, saveConfig, getConfigSync, startConfigWatcher } from "@server/config.ts";
 import { join, fromFileUrl, extname } from "https://deno.land/std@0.224.0/path/mod.ts";
 import { getAllTools, initPlugins, disposePlugins } from "@server/tools.ts";
+import { createMcpServer } from "@server/mcp.ts";
+import { createSseEndpoints } from "@server/transport/http_sse.ts";
+import { handleHttpRpc } from "@server/transport/http_stream.ts";
 import { createLogStream, getSnapshot, logError, logInfo } from "@server/logger.ts";
 import { safeResolve, listFilesRecursive } from "@server/security/paths.ts";
 
@@ -43,6 +46,49 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
 
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders(origin, cors) });
+  }
+
+  // MCP HTTP 传输端点（不属于 /api 管理端点）
+  if (url.pathname === "/mcp") {
+    if (req.method === "POST") {
+      if (currentCfg.features?.enableMcpHttp === false) {
+        return new Response("MCP HTTP disabled", { status: 403, headers: corsHeaders(origin, cors) });
+      }
+      const server = await createMcpServer();
+      const res = await handleHttpRpc(server, req);
+      return new Response(await res.text(), { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
+    }
+    if (req.method === "GET") {
+      if (currentCfg.features?.enableMcpSse === false) {
+        return new Response("MCP SSE disabled", { status: 403, headers: corsHeaders(origin, cors) });
+      }
+      const server = await createMcpServer();
+      const { handleOpen } = createSseEndpoints(server);
+      const res = await handleOpen(req);
+      return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
+    }
+  }
+
+  if (url.pathname === "/mcp/sse") {
+    if (currentCfg.features?.enableMcpSse === false) {
+      return new Response("MCP SSE disabled", { status: 403, headers: corsHeaders(origin, cors) });
+    }
+    const server = await createMcpServer();
+    const { handleOpen } = createSseEndpoints(server);
+    const res = await handleOpen(req);
+    return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
+  }
+
+  if (url.pathname === "/mcp/message") {
+    if (req.method === "POST") {
+      if (currentCfg.features?.enableMcpSse === false) {
+        return new Response("MCP SSE disabled", { status: 403, headers: corsHeaders(origin, cors) });
+      }
+      const server = await createMcpServer();
+      const { handleMessage } = createSseEndpoints(server);
+      const res = await handleMessage(req);
+      return new Response(await res.text(), { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
+    }
   }
 
   if (url.pathname === "/api/health") {
