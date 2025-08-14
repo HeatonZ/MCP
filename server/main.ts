@@ -4,6 +4,7 @@ import { getAllTools, initPlugins, disposePlugins } from "@server/tools.ts";
 import { createMcpServer } from "@server/mcp.ts";
 import { createSseEndpoints } from "@server/transport/http_sse.ts";
 import { handleHttpRpc } from "@server/transport/http_stream.ts";
+import { handleRpcPayload } from "@server/transport/rpc.ts";
 import { createLogStream, getSnapshot, logError, logInfo } from "@server/logger.ts";
 import { safeResolve, listFilesRecursive } from "@server/security/paths.ts";
 
@@ -93,6 +94,11 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
 
   if (url.pathname === "/api/health") {
     return new Response(JSON.stringify({ ok: true, ts: Date.now() }), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+  }
+
+  if (url.pathname === "/api/upstreams/status") {
+    const out = await handleRpcPayload(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "upstreams/status" }));
+    return new Response(out, { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
   }
 
   if (url.pathname.startsWith("/api/") && currentCfg.features?.enableHttpAdmin === false) {

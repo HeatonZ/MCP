@@ -24,4 +24,5 @@ export const defaultConfig: AppConfig = {
 	logging: {
 		maxLogs: 1000,
 	},
+	upstreams: [],
 }; 

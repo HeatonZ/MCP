@@ -1,5 +1,7 @@
 import { getAllTools } from "@server/tools.ts";
 import { logError } from "@server/logger.ts";
+import { getUpstreamStatus } from "@server/upstream/metrics.ts";
+import { listAggregatedResources, readAggregatedResource, listAggregatedPrompts, getAggregatedPrompt } from "@server/upstream/index.ts";
 
 type JsonValue = null | string | number | boolean | JsonValue[] | { [k: string]: JsonValue };
 type JsonRpcId = string | number | null;
@@ -43,6 +45,11 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
       return { jsonrpc: "2.0", id, result: { tools: items } };
     }
 
+    if (req.method === "upstreams/status") {
+      const items = getUpstreamStatus();
+      return { jsonrpc: "2.0", id, result: { upstreams: items } };
+    }
+
     if (req.method === "tools/call") {
       const p = (req.params ?? {}) as Record<string, unknown>;
       const name = String(p.name ?? "");
@@ -55,6 +62,35 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
       } catch (e) {
         return err(id, -32000, "Tool call failed", { error: String(e) });
       }
+    }
+
+    if (req.method === "resources/list") {
+      const items = await listAggregatedResources();
+      return { jsonrpc: "2.0", id, result: { resources: items } };
+    }
+    if (req.method === "resources/read") {
+      const p = (req.params ?? {}) as Record<string, unknown>;
+      const upstream = String(p.upstream ?? "");
+      const uri = String(p.uri ?? "");
+      if (!upstream || !uri) return err(id, -32602, "Missing upstream or uri");
+      const r = await readAggregatedResource(upstream, uri);
+      return { jsonrpc: "2.0", id, result: r };
+    }
+
+    if (req.method === "prompts/list") {
+      const items = await listAggregatedPrompts();
+      return { jsonrpc: "2.0", id, result: { prompts: items } };
+    }
+    if (req.method === "prompts/get") {
+      const p = (req.params ?? {}) as Record<string, unknown>;
+      const upstream = String(p.upstream ?? "");
+      const name = String(p.name ?? "");
+      const args = (p.args ?? {}) as Record<string, unknown>;
+      if (!upstream || !name) return err(id, -32602, "Missing upstream or name");
+      const r = await getAggregatedPrompt(upstream, name, args);
+      // ensure JSON-RPC result is JSON-serializable
+      const safe = { messages: Array.isArray(r.messages) ? r.messages as JsonValue[] : [] } as { messages: JsonValue[] };
+      return { jsonrpc: "2.0", id, result: safe };
     }
 
     return err(id, -32601, "Method not found");
