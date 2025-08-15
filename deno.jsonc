@@ -17,6 +17,8 @@
     "dev:server": "deno run -A --import-map=import_map.json --watch=server,config server/main.ts",
     "dev:server:stdio": "deno run -A --import-map=import_map.json --watch=server,config server/stdio.ts",
     "build:server": "deno compile -A --import-map=import_map.json --output=dist/z-mcp-server server/stdio.ts",
+    "build:frontend": "cd frontend && npm install && npm run build && cd .. && mkdir -p public && cp -r frontend/dist/* public/",
+    "prod": "deno task build:frontend && deno run -A server/main.ts",
     
     "typecheck": "deno check --import-map=import_map.json server/main.ts server/stdio.ts",
     "version:set": "deno run -A scripts/version.ts set",

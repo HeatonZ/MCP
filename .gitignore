@@ -11,3 +11,5 @@ node_modules/
 *.log
 config.local.json
 *.bak
+**/dist/
+public/
