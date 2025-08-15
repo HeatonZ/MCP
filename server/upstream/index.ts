@@ -163,7 +163,7 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
       return asToolsListResult(r.result);
     },
     callTool: async (req) => {
-      const r = await rpc("tools/call", { name: req.name, args: req.arguments });
+      const r = await rpc("tools/call", { name: req.name, arguments: req.arguments });
       if (r.error) throw new Error(r.error.message);
       return asToolCallResult(r.result);
     },
