@@ -99,6 +99,50 @@ function asGetPromptResult(v: unknown): GetPromptResult {
   return { messages: [] };
 }
 
+function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"number"|"json"> | undefined {
+  if (!isRecord(jsonSchema)) return undefined;
+  
+  const properties = jsonSchema.properties;
+  if (!isRecord(properties)) return undefined;
+  
+  const result: Record<string, "string"|"number"|"json"> = {};
+  
+  for (const [key, prop] of Object.entries(properties)) {
+    if (!isRecord(prop)) continue;
+    
+    const type = prop.type;
+    if (type === "string") {
+      result[key] = "string";
+    } else if (type === "number" || type === "integer") {
+      result[key] = "number";
+    } else if (type === "object" || type === "array") {
+      result[key] = "json";
+    } else {
+      // 默认作为字符串处理
+      result[key] = "string";
+    }
+  }
+  
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+// 为已知的上游工具手动定义缺失的schema
+// 这些定义基于在线context7服务的实际schema
+function getManualSchema(toolName: string): Record<string, "string"|"number"|"json"> | undefined {
+  const manualSchemas: Record<string, Record<string, "string"|"number"|"json">> = {
+    "resolve-library-id": {
+      "libraryName": "string"  // 必需参数
+    },
+    "get-library-docs": {
+      "context7CompatibleLibraryID": "string",  // 必需参数
+      "topic": "string",                        // 可选参数
+      "tokens": "number"                        // 可选参数
+    }
+  };
+  
+  return manualSchemas[toolName];
+}
+
 function sdkClientAdapter(c: Client): McpClientLike {
   return {
     listTools: async () => asToolsListResult(await (c.listTools() as unknown as Promise<unknown>)),
@@ -135,6 +179,38 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
     return null;
   }
 
+  async function readSseFirstMessage(res: Response): Promise<unknown> {
+    const body = res.body;
+    if (!body) return null;
+    const reader = body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value ?? "";
+      
+      // Parse SSE format: event: message\ndata: {...}\n\n
+      // 寻找完整的SSE消息块
+      const messageStart = buffer.indexOf('event: message');
+      if (messageStart >= 0) {
+        const dataStart = buffer.indexOf('data: ', messageStart);
+        if (dataStart >= 0) {
+          const dataContent = buffer.substring(dataStart + 6);
+          const messageEnd = dataContent.indexOf('\n\n');
+          if (messageEnd >= 0) {
+            const jsonData = dataContent.substring(0, messageEnd).trim();
+            try {
+              return JSON.parse(jsonData);
+            } catch {
+              return jsonData;
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   async function rpc(method: string, params?: Record<string, unknown>): Promise<{ result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } }>{
     const defaultHeaders: Record<string, string> = {
       Accept: "application/x-ndjson, application/json",
@@ -151,6 +227,10 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
     const respCt = (res.headers.get("Content-Type") || "").toLowerCase();
     if (respCt.includes("application/x-ndjson")) {
       const first = await readNdjsonFirstLine(res);
+      return (first ?? {}) as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
+    }
+    if (respCt.includes("text/event-stream")) {
+      const first = await readSseFirstMessage(res);
       return (first ?? {}) as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
     }
     const json = await res.json();
@@ -294,7 +374,11 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string): Prom
     const title = t.title ?? t.name;
     const description = t.description ?? "";
     const zodSchema = undefined;
-    const inputSchema: Record<string, "string"|"number"|"json"> | undefined = undefined;
+    // 从上游工具的inputSchema中提取简化的schema信息，如果为空则尝试使用手动定义的schema
+    let inputSchema: Record<string, "string"|"number"|"json"> | undefined = extractSimpleSchema(t.inputSchema);
+    if (!inputSchema) {
+      inputSchema = getManualSchema(t.name);
+    }
     const handler = async (args: Record<string, unknown>) => {
       try {
         const res = await client.callTool({ name: t.name, arguments: args });

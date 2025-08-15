@@ -7,3 +7,7 @@ node_modules/
 .env.development
 .env.test
 .env.production
+
+*.log
+config.local.json
+*.bak

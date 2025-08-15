@@ -4,7 +4,9 @@
   "httpPort": 8787,
   "features": {
     "enableHttpAdmin": true,
-    "enableCodeEditing": true
+    "enableCodeEditing": true,
+    "enableMcpSse": true,
+    "enableMcpHttp": true
   },
   "upstreams": [
     {

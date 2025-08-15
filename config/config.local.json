@@ -1,18 +1,15 @@
 {
   "upstreams": [
     {
-      "name": "context7-proxy-local",
-      "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@upstash/context7-mcp"],
+      "name": "context7-online",
+      "transport": "sse",
+      "url": "https://mcp.context7.com/mcp",
       "namespace": "context7",
       "enabled": true,
-      "env": {
-        "UPSTASH_REDIS_REST_URL": "${UPSTASH_REDIS_REST_URL}",
-        "UPSTASH_REDIS_REST_TOKEN": "${UPSTASH_REDIS_REST_TOKEN}"
+      "headers": {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream"
       }
     }
   ]
 }
-
-

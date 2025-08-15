@@ -2,6 +2,7 @@ import { getAllTools } from "@server/tools.ts";
 import { logError } from "@server/logger.ts";
 import { getUpstreamStatus } from "@server/upstream/metrics.ts";
 import { listAggregatedResources, listAggregatedPrompts, getAggregatedPrompt } from "@server/upstream/index.ts";
+import { getConfigSync } from "@server/config.ts";
 
 type JsonValue = null | string | number | boolean | JsonValue[] | { [k: string]: JsonValue };
 type JsonRpcId = string | number | null;
@@ -41,6 +42,7 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
       const protocolVersion = String(p.protocolVersion ?? "2024-11-05");
       const _clientInfo = (p.clientInfo ?? {}) as Record<string, unknown>;
       
+      const cfg = getConfigSync();
       return {
         jsonrpc: "2.0",
         id,
@@ -53,8 +55,8 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
             logging: {}
           },
           serverInfo: {
-            name: "deno-mcp-server",
-            version: "0.1.0"
+            name: cfg?.serverName ?? "deno-mcp-server",
+            version: cfg?.version ?? "0.1.0"
           }
         }
       };
@@ -62,15 +64,16 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
 
     // MCP 标准通知处理
     if (req.method === "notifications/initialized") {
-      // initialized 是通知，不需要响应
-      return { jsonrpc: "2.0", id, result: null };
+      // initialized 是通知，根据JSON-RPC 2.0标准，通知不应该有响应
+      // 这里我们需要特殊处理，因为框架期望返回值，但实际上不会发送响应
+      return { jsonrpc: "2.0", id: null, result: null };
     }
 
     if (req.method === "tools/list") {
       const items = (await getAllTools()).map((t) => {
         // 将简化的 inputSchema 转换为标准 JSON Schema 格式
         const inputSchema = t.inputSchema ?? {};
-        const properties: Record<string, any> = {};
+        const properties: Record<string, { type: string }> = {};
         const required: string[] = [];
         
         for (const [key, type] of Object.entries(inputSchema)) {

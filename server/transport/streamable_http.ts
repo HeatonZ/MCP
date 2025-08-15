@@ -1,6 +1,7 @@
 import type { McpServer } from "npm:@modelcontextprotocol/sdk/server/mcp.js";
 import { logInfo, logError } from "@server/logger.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
+import { getConfigSync } from "@server/config.ts";
 
 const encoder = new TextEncoder();
 
@@ -170,8 +171,19 @@ export function handleStreamableHttpGet(_server: McpServer, req: Request): Respo
         controller.enqueue(encoder.encode(`data: {"sessionId":"${session.id}"}\n\n`));
         
         // 发送服务器信息
+        const cfg = getConfigSync();
+        const serverInfo = {
+          name: cfg?.serverName ?? "deno-mcp-server",
+          version: cfg?.version ?? "0.1.0",
+          capabilities: {
+            tools: {},
+            resources: {},
+            prompts: {},
+            logging: {}
+          }
+        };
         controller.enqueue(encoder.encode(`event: serverInfo\n`));
-        controller.enqueue(encoder.encode(`data: {"name":"deno-mcp-server","version":"0.1.0","capabilities":{"tools":{},"resources":{},"prompts":{},"logging":{}}}\n\n`));
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(serverInfo)}\n\n`));
         
         // 设置定期 ping
         const pingInterval = setInterval(() => {
