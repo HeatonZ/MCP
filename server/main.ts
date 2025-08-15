@@ -4,6 +4,7 @@ import { getAllTools, initPlugins, disposePlugins } from "@server/tools.ts";
 import { createMcpServer } from "@server/mcp.ts";
 import { createSseEndpoints } from "@server/transport/http_sse.ts";
 import { handleHttpRpc } from "@server/transport/http_stream.ts";
+import { handleStreamableHttp, handleStreamableHttpGet } from "@server/transport/streamable_http.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
 import { reconnectUpstream } from "@server/upstream/index.ts";
 import { createLogStream, getSnapshot, logError, logInfo } from "@server/logger.ts";
@@ -39,6 +40,16 @@ function contentTypeByExt(p: string): string {
 const cfg = await loadConfig();
 const _cfgWatcher = startConfigWatcher();
 
+// 创建全局单例 MCP 服务器实例，避免每次请求都重新创建
+let globalMcpServer: Awaited<ReturnType<typeof createMcpServer>> | null = null;
+
+async function getGlobalMcpServer() {
+  if (!globalMcpServer) {
+    globalMcpServer = await createMcpServer();
+  }
+  return globalMcpServer;
+}
+
 async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSync> extends infer T ? (T extends null ? import("@shared/types/system.ts").AppConfig : import("@shared/types/system.ts").AppConfig) : import("@shared/types/system.ts").AppConfig): Promise<Response> {
   const url = new URL(req.url);
   const origin = req.headers.get("Origin");
@@ -50,13 +61,33 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
     return new Response(null, { headers: corsHeaders(origin, cors) });
   }
 
-  // MCP HTTP 传输端点（不属于 /api 管理端点）
+  // MCP Streamable HTTP 统一端点 /message（符合新协议规范）
+  if (url.pathname === "/message") {
+    if (req.method === "POST") {
+      if (currentCfg.features?.enableMcpHttp === false) {
+        return new Response("MCP HTTP disabled", { status: 403, headers: corsHeaders(origin, cors) });
+      }
+      const server = await getGlobalMcpServer();
+      const res = await handleStreamableHttp(server, req);
+      return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
+    }
+    if (req.method === "GET") {
+      if (currentCfg.features?.enableMcpSse === false) {
+        return new Response("MCP SSE disabled", { status: 403, headers: corsHeaders(origin, cors) });
+      }
+      const server = await getGlobalMcpServer();
+      const res = handleStreamableHttpGet(server, req);
+      return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
+    }
+  }
+
+  // MCP HTTP 传输端点（保持向后兼容）
   if (url.pathname === "/mcp") {
     if (req.method === "POST") {
       if (currentCfg.features?.enableMcpHttp === false) {
         return new Response("MCP HTTP disabled", { status: 403, headers: corsHeaders(origin, cors) });
       }
-      const server = await createMcpServer();
+      const server = await getGlobalMcpServer();
       const res = await handleHttpRpc(server, req);
       return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
     }
@@ -64,7 +95,7 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
       if (currentCfg.features?.enableMcpSse === false) {
         return new Response("MCP SSE disabled", { status: 403, headers: corsHeaders(origin, cors) });
       }
-      const server = await createMcpServer();
+      const server = await getGlobalMcpServer();
       const { handleOpen } = createSseEndpoints(server);
       const res = await handleOpen(req);
       return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
@@ -75,7 +106,7 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
     if (currentCfg.features?.enableMcpSse === false) {
       return new Response("MCP SSE disabled", { status: 403, headers: corsHeaders(origin, cors) });
     }
-    const server = await createMcpServer();
+    const server = await getGlobalMcpServer();
     const { handleOpen } = createSseEndpoints(server);
     const res = await handleOpen(req);
     return new Response(res.body, { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
@@ -86,7 +117,7 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
       if (currentCfg.features?.enableMcpSse === false) {
         return new Response("MCP SSE disabled", { status: 403, headers: corsHeaders(origin, cors) });
       }
-      const server = await createMcpServer();
+      const server = await getGlobalMcpServer();
       const { handleMessage } = createSseEndpoints(server);
       const res = await handleMessage(req);
       return new Response(await res.text(), { status: res.status, headers: { ...Object.fromEntries(res.headers), ...corsHeaders(origin, cors) } });
@@ -220,6 +251,9 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
   return new Response("Not Found", { status: 404, headers: corsHeaders(origin, cors) });
 }
 await initPlugins();
+
+// 预先初始化全局 MCP 服务器实例，确保启动时就准备好
+await getGlobalMcpServer();
 
 Deno.addSignalListener?.("SIGINT", () => { try { disposePlugins(); } catch (_) { /* ignore */ } Deno.exit(); });
 Deno.addSignalListener?.("SIGTERM", () => { try { disposePlugins(); } catch (_) { /* ignore */ } Deno.exit(); });
