@@ -22,6 +22,9 @@ async function readConfigFile(): Promise<Partial<AppConfig>> {
 
 async function readLocalOverride(): Promise<Partial<AppConfig>> {
     try {
+        if(Deno.env.has('CONFIG')){
+            return JSON.parse(Deno.env.get('CONFIG')!) as Partial<AppConfig>;
+        }
         const text = await Deno.readTextFile(LOCAL_OVERRIDE_PATH);
         return JSON.parse(text) as Partial<AppConfig>;
     } catch {
