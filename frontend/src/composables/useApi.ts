@@ -33,9 +33,7 @@ const getAuthToken = () => {
   if (typeof window === 'undefined') {
     return null;
   }
-  const token = localStorage.getItem('auth_token');
-  console.log('🔍 Getting auth token:', token ? `${token.substring(0, 8)}...` : 'none');
-  return token;
+  return localStorage.getItem('auth_token');
 };
 
 // 检查是否在开发环境
@@ -71,13 +69,15 @@ const createAuthenticatedFetch = (url: string, options: RequestInit = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  // 调试信息
-  console.log(`🔐 API Request: ${options.method || 'GET'} ${fullUrl}`, {
-    hasToken: !!token,
-    token: token ? `${token.substring(0, 8)}...` : 'none',
-    headers: Object.keys(headers),
-    authHeader: headers['Authorization'] ? 'present' : 'missing'
-  });
+  // 调试信息（仅在启用调试时显示）
+  if (systemConfig.value.enableDebug) {
+    console.log(`🔐 API Request: ${options.method || 'GET'} ${fullUrl}`, {
+      hasToken: !!token,
+      token: token ? `${token.substring(0, 8)}...` : 'none',
+      headers: Object.keys(headers),
+      authHeader: headers['Authorization'] ? 'present' : 'missing'
+    });
+  }
   
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), systemConfig.value.apiTimeout);

@@ -38,12 +38,10 @@ export function useAuth() {
         localStorage.setItem('auth_token', result.token);
         localStorage.setItem('auth_user', credentials.username);
         
-        // 调试信息
-        console.log('🔑 Login successful, token saved:', {
-          token: result.token.substring(0, 8) + '...',
-          localStorage: localStorage.getItem('auth_token')?.substring(0, 8) + '...',
-          authTokenValue: authToken.value?.substring(0, 8) + '...'
-        });
+        // 调试信息（开发环境）
+        if (import.meta.env.DEV) {
+          console.log('🔑 Login successful, token saved');
+        }
       }
       
       return result;
