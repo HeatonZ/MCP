@@ -271,6 +271,26 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
   }
 
   if (url.pathname === "/api/logs/sse") {
+    // 对于SSE，检查URL参数中的token（因为EventSource不支持自定义头）
+    const token = url.searchParams.get('token');
+    if (token) {
+      const auth = requireAuth(new Request(req.url, {
+        ...req,
+        headers: {
+          ...req.headers,
+          'Authorization': `Bearer ${token}`
+        }
+      }));
+      if (!auth.authenticated) {
+        return new Response("Unauthorized", { status: 401, headers: corsHeaders(origin, cors) });
+      }
+    } else {
+      const auth = requireAuth(req);
+      if (!auth.authenticated) {
+        return new Response("Unauthorized", { status: 401, headers: corsHeaders(origin, cors) });
+      }
+    }
+    
     const controller = new AbortController();
     req.signal.addEventListener("abort", () => controller.abort());
     return createLogStream(controller.signal);
