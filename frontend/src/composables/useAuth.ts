@@ -71,6 +71,11 @@ export function useAuth() {
   };
   
   const checkAuthStatus = async (): Promise<boolean> => {
+    // 确保认证状态已初始化
+    if (!authToken.value && typeof window !== 'undefined') {
+      initializeAuth();
+    }
+    
     if (!authToken.value) {
       return false;
     }
@@ -93,6 +98,11 @@ export function useAuth() {
   };
   
   const getAuthHeaders = () => {
+    // 确保认证状态已初始化
+    if (!authToken.value && typeof window !== 'undefined') {
+      initializeAuth();
+    }
+    
     return authToken.value ? {
       'Authorization': `Bearer ${authToken.value}`,
     } : {};
