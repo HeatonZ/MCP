@@ -33,11 +33,28 @@ const getAuthToken = () => {
   return localStorage.getItem('auth_token');
 };
 
+// 检查是否在开发环境
+const isDevelopment = () => {
+  return import.meta.env.DEV || systemConfig.value.environment === 'development';
+};
+
 // 创建带认证的fetch请求
 const createAuthenticatedFetch = (url: string, options: RequestInit = {}) => {
   const token = getAuthToken();
-  const baseUrl = systemConfig.value.backendUrl.replace(/\/$/, ''); // 移除末尾斜杠
-  const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+  
+  // 在开发环境使用相对URL以利用Vite代理，生产环境使用完整URL
+  let fullUrl: string;
+  if (isDevelopment() && url.startsWith('/api')) {
+    // 开发环境：使用相对URL，让Vite代理处理
+    fullUrl = url;
+  } else if (url.startsWith('http')) {
+    // 已经是完整URL
+    fullUrl = url;
+  } else {
+    // 生产环境：使用配置的后端地址
+    const baseUrl = systemConfig.value.backendUrl.replace(/\/$/, '');
+    fullUrl = `${baseUrl}${url}`;
+  }
   
   const headers = {
     'Content-Type': 'application/json',
@@ -99,8 +116,19 @@ export function useApi() {
   
   // 不需要认证的请求（用于登录等）
   const publicRequest = async (url: string, options: RequestInit = {}) => {
-    const baseUrl = systemConfig.value.backendUrl.replace(/\/$/, '');
-    const fullUrl = url.startsWith('http') ? url : `${baseUrl}${url}`;
+    // 在开发环境使用相对URL以利用Vite代理，生产环境使用完整URL
+    let fullUrl: string;
+    if (isDevelopment() && url.startsWith('/api')) {
+      // 开发环境：使用相对URL，让Vite代理处理
+      fullUrl = url;
+    } else if (url.startsWith('http')) {
+      // 已经是完整URL
+      fullUrl = url;
+    } else {
+      // 生产环境：使用配置的后端地址
+      const baseUrl = systemConfig.value.backendUrl.replace(/\/$/, '');
+      fullUrl = `${baseUrl}${url}`;
+    }
     
     const headers = {
       'Content-Type': 'application/json',
