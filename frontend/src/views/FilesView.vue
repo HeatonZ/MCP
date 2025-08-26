@@ -39,9 +39,11 @@
 import * as monaco from "monaco-editor";
 import { onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { useApi } from "@/composables/useApi";
 
 type AppConfig = { features?: { enableCodeEditing?: boolean } };
 
+const { get, put } = useApi();
 const files = ref<string[]>([]);
 const currentDir = ref<string>("server");
 const openedPath = ref<string>("");
@@ -50,36 +52,48 @@ let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 const enableCodeEditing = ref(true);
 
 async function loadFeature() {
-  const res = await fetch("/api/config");
-  const cfg = (await res.json()) as AppConfig;
-  enableCodeEditing.value = cfg.features?.enableCodeEditing !== false;
+  try {
+    const response = await get("/api/config");
+    const cfg = (await response.json()) as AppConfig;
+    enableCodeEditing.value = cfg.features?.enableCodeEditing !== false;
+  } catch (error) {
+    ElMessage.error("加载功能配置失败: " + error);
+  }
 }
 
 async function loadFiles() {
-  const res = await fetch(`/api/list?dir=${encodeURIComponent(currentDir.value)}`);
-  const json = await res.json();
-  files.value = json.files ?? [];
+  try {
+    const response = await get(`/api/list?dir=${encodeURIComponent(currentDir.value)}`);
+    const json = await response.json();
+    files.value = json.files ?? [];
+  } catch (error) {
+    ElMessage.error("加载文件列表失败: " + error);
+  }
 }
 
 async function openFile(path: string) {
-  const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
-  const text = await res.text();
-  openedPath.value = path;
-  if (!editor && editorEl.value) {
-    editor = monaco.editor.create(editorEl.value, {
-      value: text,
-      language: guessLanguage(path),
-      automaticLayout: true,
-      theme: "vs-dark",
-      fontSize: 14,
-      minimap: { enabled: false },
-    });
-  } else if (editor) {
-    const model = editor.getModel();
-    if (model) {
-      model.setValue(text);
-      monaco.editor.setModelLanguage(model, guessLanguage(path));
+  try {
+    const response = await get(`/api/file?path=${encodeURIComponent(path)}`);
+    const text = await response.text();
+    openedPath.value = path;
+    if (!editor && editorEl.value) {
+      editor = monaco.editor.create(editorEl.value, {
+        value: text,
+        language: guessLanguage(path),
+        automaticLayout: true,
+        theme: "vs-dark",
+        fontSize: 14,
+        minimap: { enabled: false },
+      });
+    } else if (editor) {
+      const model = editor.getModel();
+      if (model) {
+        model.setValue(text);
+        monaco.editor.setModelLanguage(model, guessLanguage(path));
+      }
     }
+  } catch (error) {
+    ElMessage.error("打开文件失败: " + error);
   }
 }
 
@@ -95,12 +109,11 @@ async function saveFile() {
   if (!editor || !openedPath.value) return;
   const content = editor.getValue();
   try {
-    const res = await fetch("/api/file", {
-      method: "PUT",
+    const response = await put("/api/file", {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: openedPath.value, content }),
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!response.ok) throw new Error(await response.text());
     ElMessage.success("保存成功");
   } catch (e:any) {
     ElMessage.error("保存失败: " + String(e?.message || e));

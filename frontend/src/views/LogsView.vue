@@ -23,9 +23,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { useApi } from "@/composables/useApi";
+import { useAuth } from "@/composables/useAuth";
 
 type LogRecord = { ts: number; level: 'debug'|'info'|'warn'|'error'; source: string; message: string };
 
+const { get } = useApi();
+const { getAuthHeaders } = useAuth();
 const logs = ref<LogRecord[]>([]);
 let evtSrc: EventSource | null = null;
 
@@ -36,7 +40,13 @@ function fmtTs(ts: number) {
 
 function startLogs() {
   if (evtSrc) evtSrc.close();
-  evtSrc = new EventSource("/api/logs/sse");
+  
+  // EventSource 不支持自定义头，所以我们需要在URL中传递token
+  const authHeaders = getAuthHeaders();
+  const token = authHeaders.Authorization?.replace('Bearer ', '');
+  const url = token ? `/api/logs/sse?token=${encodeURIComponent(token)}` : "/api/logs/sse";
+  
+  evtSrc = new EventSource(url);
   evtSrc.onmessage = (ev) => {
     try {
       const rec = JSON.parse(ev.data);
@@ -51,9 +61,13 @@ function startLogs() {
 }
 
 async function loadLogsSnapshot() {
-  const res = await fetch("/api/logs/snapshot");
-  const json = await res.json();
-  logs.value = json.items ?? [];
+  try {
+    const response = await get("/api/logs/snapshot");
+    const json = await response.json();
+    logs.value = json.items ?? [];
+  } catch (error) {
+    ElMessage.error("加载日志快照失败: " + error);
+  }
 }
 
 onMounted(() => {

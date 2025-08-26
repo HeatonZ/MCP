@@ -35,6 +35,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { ElMessage } from 'element-plus';
+import { useApi } from "@/composables/useApi";
 
 type Row = {
   name: string;
@@ -50,12 +51,13 @@ type Row = {
   lastError?: string;
 };
 
+const { get, post } = useApi();
 const rows = ref<Row[]>([]);
 
 async function load() {
   try {
-    const res = await fetch('/api/upstreams/status');
-    const json = await res.json();
+    const response = await get('/api/upstreams/status');
+    const json = await response.json();
     rows.value = (json.upstreams ?? []) as Row[];
   } catch (e) {
     ElMessage.error(String(e));
@@ -65,8 +67,13 @@ async function load() {
 onMounted(load);
 
 async function reconnect(name: string) {
-  await fetch(`/api/upstreams/reconnect?name=${encodeURIComponent(name)}`, { method: 'POST' });
-  await load();
+  try {
+    await post(`/api/upstreams/reconnect?name=${encodeURIComponent(name)}`);
+    await load();
+    ElMessage.success("重连成功");
+  } catch (error) {
+    ElMessage.error("重连失败: " + error);
+  }
 }
 </script>
 

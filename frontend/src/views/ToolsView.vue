@@ -38,8 +38,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
+import { useApi } from "@/composables/useApi";
 
 type UiTool = { name: string; title?: string; description?: string; inputSchema?: Record<string, "string"|"number"|"json"> };
+
+const { get, post } = useApi();
 
 const tools = ref<UiTool[]>([]);
 const selectedToolName = ref("");
@@ -57,18 +60,23 @@ const sourceInfo = computed(() => {
 });
 
 async function loadTools() {
-  const res = await fetch("/api/tools");
-  const json = await res.json();
-  tools.value = json.tools ?? [];
   try {
-    const st = await fetch('/api/upstreams/status').then(r => r.json());
-    const map: Record<string, { namespace?: string; avgLatencyMs: number }> = {};
-    for (const it of (st.upstreams ?? [])) map[it.name] = { namespace: it.namespace, avgLatencyMs: it.avgLatencyMs };
-    upstreamStatus.value = map;
-  } catch { /* ignore */ }
-  if (tools.value.length && !selectedToolName.value) {
-    selectedToolName.value = tools.value[0].name;
-    onSelectTool();
+    const response = await get("/api/tools");
+    const json = await response.json();
+    tools.value = json.tools ?? [];
+    try {
+      const statusResponse = await get('/api/upstreams/status');
+      const st = await statusResponse.json();
+      const map: Record<string, { namespace?: string; avgLatencyMs: number }> = {};
+      for (const it of (st.upstreams ?? [])) map[it.name] = { namespace: it.namespace, avgLatencyMs: it.avgLatencyMs };
+      upstreamStatus.value = map;
+    } catch { /* ignore */ }
+    if (tools.value.length && !selectedToolName.value) {
+      selectedToolName.value = tools.value[0].name;
+      onSelectTool();
+    }
+  } catch (error) {
+    ElMessage.error("加载工具失败: " + error);
   }
 }
 
@@ -100,12 +108,11 @@ async function callTool() {
       } else args[k] = toolArgsText.value[k] ?? "";
     }
   }
-  const res = await fetch("/api/tools/call", {
-    method: "POST",
+  const response = await post("/api/tools/call", {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: t.name, args }),
   });
-  const json = await res.json();
+  const json = await response.json();
   if (json.ok === false) {
     toolResult.value = JSON.stringify(json, null, 2);
     ElMessage.error("调用失败");

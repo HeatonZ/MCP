@@ -17,30 +17,35 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { ElMessage } from "element-plus";
+import { useApi } from "@/composables/useApi";
 
 type AppConfig = {
   features?: { enableHttpAdmin?: boolean }
 };
 
+const { get, put } = useApi();
 const configText = ref("{}");
 const enableHttpAdmin = ref(true);
 
 async function refreshConfig() {
-  const res = await fetch("/api/config");
-  const json = await res.json();
-  configText.value = JSON.stringify(json, null, 2);
-  const cfg = json as AppConfig;
-  enableHttpAdmin.value = cfg.features?.enableHttpAdmin !== false;
+  try {
+    const response = await get("/api/config");
+    const json = await response.json();
+    configText.value = JSON.stringify(json, null, 2);
+    const cfg = json as AppConfig;
+    enableHttpAdmin.value = cfg.features?.enableHttpAdmin !== false;
+  } catch (error) {
+    ElMessage.error("加载配置失败: " + error);
+  }
 }
 
 async function saveConfig() {
   try {
-    const res = await fetch("/api/config", {
-      method: "PUT",
+    const response = await put("/api/config", {
       headers: { "Content-Type": "application/json" },
       body: configText.value,
     });
-    if (!res.ok) throw new Error(await res.text());
+    if (!response.ok) throw new Error(await response.text());
     ElMessage.success("保存成功");
     await refreshConfig();
   } catch (e:any) {
