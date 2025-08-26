@@ -69,8 +69,8 @@ const createAuthenticatedFetch = (url: string, options: RequestInit = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
   
-  // 调试信息（仅在启用调试时显示）
-  if (systemConfig.value.enableDebug) {
+  // 调试信息（开发环境总是显示）
+  if (isDevelopment()) {
     console.log(`🔐 API Request: ${options.method || 'GET'} ${fullUrl}`, {
       hasToken: !!token,
       token: token ? `${token.substring(0, 8)}...` : 'none',
