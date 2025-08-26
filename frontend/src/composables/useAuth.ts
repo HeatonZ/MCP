@@ -2,10 +2,24 @@ import { ref, computed } from 'vue';
 import type { LoginRequest, LoginResponse, AuthStatus } from '@shared/types/auth';
 import { useApi } from './useApi';
 
-const authToken = ref<string | null>(localStorage.getItem('auth_token'));
-const authUser = ref<string | null>(localStorage.getItem('auth_user'));
+// 延迟初始化，避免SSR问题
+const authToken = ref<string | null>(null);
+const authUser = ref<string | null>(null);
+
+// 初始化函数
+const initializeAuth = () => {
+  if (typeof window !== 'undefined') {
+    authToken.value = localStorage.getItem('auth_token');
+    authUser.value = localStorage.getItem('auth_user');
+  }
+};
 
 export function useAuth() {
+  // 确保认证状态已初始化
+  if (authToken.value === null && typeof window !== 'undefined') {
+    initializeAuth();
+  }
+  
   const { publicRequest, get } = useApi();
   const isAuthenticated = computed(() => !!authToken.value);
   
@@ -23,6 +37,13 @@ export function useAuth() {
         authUser.value = credentials.username;
         localStorage.setItem('auth_token', result.token);
         localStorage.setItem('auth_user', credentials.username);
+        
+        // 调试信息
+        console.log('🔑 Login successful, token saved:', {
+          token: result.token.substring(0, 8) + '...',
+          localStorage: localStorage.getItem('auth_token')?.substring(0, 8) + '...',
+          authTokenValue: authToken.value?.substring(0, 8) + '...'
+        });
       }
       
       return result;

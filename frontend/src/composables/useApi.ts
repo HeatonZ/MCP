@@ -30,7 +30,12 @@ const saveSystemConfig = (config: Partial<SystemConfig>) => {
 
 // 获取认证token
 const getAuthToken = () => {
-  return localStorage.getItem('auth_token');
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  const token = localStorage.getItem('auth_token');
+  console.log('🔍 Getting auth token:', token ? `${token.substring(0, 8)}...` : 'none');
+  return token;
 };
 
 // 检查是否在开发环境
@@ -56,7 +61,7 @@ const createAuthenticatedFetch = (url: string, options: RequestInit = {}) => {
     fullUrl = `${baseUrl}${url}`;
   }
   
-  const headers = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...options.headers,
   };
@@ -65,6 +70,14 @@ const createAuthenticatedFetch = (url: string, options: RequestInit = {}) => {
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
+  
+  // 调试信息
+  console.log(`🔐 API Request: ${options.method || 'GET'} ${fullUrl}`, {
+    hasToken: !!token,
+    token: token ? `${token.substring(0, 8)}...` : 'none',
+    headers: Object.keys(headers),
+    authHeader: headers['Authorization'] ? 'present' : 'missing'
+  });
   
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), systemConfig.value.apiTimeout);
@@ -77,20 +90,15 @@ const createAuthenticatedFetch = (url: string, options: RequestInit = {}) => {
     clearTimeout(timeoutId);
   });
   
-  if (systemConfig.value.enableDebug) {
-    console.log(`API Request: ${options.method || 'GET'} ${fullUrl}`, {
-      headers,
-      body: options.body,
-    });
-  }
-  
   return fetchPromise;
 };
 
 // API客户端方法
 export function useApi() {
-  // 初始化时加载配置
-  loadSystemConfig();
+  // 确保配置已加载
+  if (!systemConfig.value.backendUrl || systemConfig.value.backendUrl === 'http://localhost:8787') {
+    loadSystemConfig();
+  }
   
   const get = async (url: string) => {
     return createAuthenticatedFetch(url, { method: 'GET' });
