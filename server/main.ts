@@ -9,6 +9,8 @@ import { handleRpcPayload } from "@server/transport/rpc.ts";
 import { reconnectUpstream } from "@server/upstream/index.ts";
 import { createLogStream, getSnapshot, logError, logInfo } from "@server/logger.ts";
 import { safeResolve, listFilesRecursive } from "@server/security/paths.ts";
+import { requireAuth, handleLogin, handleLogout, getAuthStatus } from "@server/auth.ts";
+import { testUpstreamConnection, testToolCall, testResourceRead, testPromptGet } from "@server/test_api.ts";
 
 function corsHeaders(origin: string | null, allowedOrigins: string[] | undefined): HeadersInit {
   const allow = allowedOrigins && allowedOrigins.length && allowedOrigins[0] !== "*" ? (origin && allowedOrigins.includes(origin) ? origin : "") : (origin ?? "*");
@@ -128,6 +130,47 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
     return new Response(JSON.stringify({ ok: true, ts: Date.now() }), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
   }
 
+  // 认证API路由
+  if (url.pathname === "/api/auth/login") {
+    if (req.method === "POST") {
+      try {
+        const loginData = await req.json();
+        const result = handleLogin(loginData);
+        return new Response(JSON.stringify(result), { 
+          status: result.success ? 200 : 401,
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, message: "Invalid request body" }), { 
+          status: 400, 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      }
+    }
+  }
+
+  if (url.pathname === "/api/auth/logout") {
+    if (req.method === "POST") {
+      const authHeader = req.headers.get("Authorization");
+      const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : "";
+      const result = handleLogout(token);
+      return new Response(JSON.stringify(result), { 
+        headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+      });
+    }
+  }
+
+  if (url.pathname === "/api/auth/status") {
+    if (req.method === "GET") {
+      const authHeader = req.headers.get("Authorization");
+      const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : "";
+      const status = getAuthStatus(token);
+      return new Response(JSON.stringify(status), { 
+        headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+      });
+    }
+  }
+
   if (url.pathname === "/api/upstreams/status") {
     const out = await handleRpcPayload(JSON.stringify({ jsonrpc: "2.0", id: 1, method: "upstreams/status" }));
     return new Response(out, { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
@@ -141,8 +184,90 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
     return new Response(JSON.stringify({ ok }), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
   }
 
+  // 对于需要认证的API路由，先检查认证状态（除了认证相关的API）
+  if (url.pathname.startsWith("/api/") && 
+      !url.pathname.startsWith("/api/auth/") && 
+      !url.pathname.startsWith("/api/health")) {
+    const auth = requireAuth(req);
+    if (!auth.authenticated) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), { 
+        status: 401, 
+        headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+      });
+    }
+  }
+
   if (url.pathname.startsWith("/api/") && currentCfg.features?.enableHttpAdmin === false) {
     return new Response("Admin API disabled", { status: 403, headers: corsHeaders(origin, cors) });
+  }
+
+  // 测试API路由
+  if (url.pathname === "/api/test/upstream") {
+    if (req.method === "POST") {
+      try {
+        const testRequest = await req.json();
+        const result = await testUpstreamConnection(testRequest);
+        return new Response(JSON.stringify(result), { 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+          status: 500, 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      }
+    }
+  }
+
+  if (url.pathname === "/api/test/tool") {
+    if (req.method === "POST") {
+      try {
+        const testRequest = await req.json();
+        const result = await testToolCall(testRequest);
+        return new Response(JSON.stringify(result), { 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+          status: 500, 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      }
+    }
+  }
+
+  if (url.pathname === "/api/test/resource") {
+    if (req.method === "POST") {
+      try {
+        const testRequest = await req.json();
+        const result = await testResourceRead(testRequest);
+        return new Response(JSON.stringify(result), { 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+          status: 500, 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      }
+    }
+  }
+
+  if (url.pathname === "/api/test/prompt") {
+    if (req.method === "POST") {
+      try {
+        const testRequest = await req.json();
+        const result = await testPromptGet(testRequest);
+        return new Response(JSON.stringify(result), { 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+          status: 500, 
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      }
+    }
   }
 
   if (url.pathname === "/api/logs/sse") {
