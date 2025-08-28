@@ -99,13 +99,13 @@ function asGetPromptResult(v: unknown): GetPromptResult {
   return { messages: [] };
 }
 
-function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"number"|"json"> | undefined {
+function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"number"|"json"|"boolean"> | undefined {
   if (!isRecord(jsonSchema)) return undefined;
   
   const properties = jsonSchema.properties;
   if (!isRecord(properties)) return undefined;
   
-  const result: Record<string, "string"|"number"|"json"> = {};
+  const result: Record<string, "string"|"number"|"json"|"boolean"> = {};
   
   for (const [key, prop] of Object.entries(properties)) {
     if (!isRecord(prop)) continue;
@@ -116,8 +116,7 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
     } else if (type === "number" || type === "integer") {
       result[key] = "number";
     } else if (type === "boolean") {
-      // boolean类型在前端界面中用字符串表示 (true/false)
-      result[key] = "string";
+      result[key] = "boolean";
     } else if (type === "object" || type === "array") {
       result[key] = "json";
     } else {
@@ -131,8 +130,8 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
 
 // 为已知的上游工具手动定义缺失的schema
 // 这些定义基于在线context7服务的实际schema
-function getManualSchema(toolName: string): Record<string, "string"|"number"|"json"> | undefined {
-  const manualSchemas: Record<string, Record<string, "string"|"number"|"json">> = {
+function getManualSchema(toolName: string): Record<string, "string"|"number"|"json"|"boolean"> | undefined {
+  const manualSchemas: Record<string, Record<string, "string"|"number"|"json"|"boolean">> = {
     "resolve-library-id": {
       "libraryName": "string"  // 必需参数
     },
@@ -144,19 +143,21 @@ function getManualSchema(toolName: string): Record<string, "string"|"number"|"js
     // sequential-thinking工具的fallback schema（当MCP传输中schema丢失时使用）
     "sequentialthinking": {
       "thought": "string",                      // 当前思考步骤（必需）
-      "nextThoughtNeeded": "string",            // 是否需要更多思考 true/false（必需）
+      "nextThoughtNeeded": "boolean",           // 是否需要更多思考（必需）
       "thoughtNumber": "number",                // 当前思考编号（必需）
       "totalThoughts": "number",                // 预估总思考数（必需）
-      "isRevision": "string",                   // 是否为修正思考 true/false（可选）
+      "isRevision": "boolean",                  // 是否为修正思考（可选）
       "revisesThought": "number",               // 修正的思考编号（可选）
       "branchFromThought": "number",            // 分支起始思考编号（可选）
       "branchId": "string",                     // 分支标识符（可选）
-      "needsMoreThoughts": "string"             // 是否需要更多思考 true/false（可选）
+      "needsMoreThoughts": "boolean"            // 是否需要更多思考（可选）
     }
   };
   
   return manualSchemas[toolName];
 }
+
+
 
 function sdkClientAdapter(c: Client): McpClientLike {
   return {
@@ -390,7 +391,7 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string): Prom
     const description = t.description ?? "";
     const zodSchema = undefined;
     // 从上游工具的inputSchema中提取简化的schema信息，如果为空则尝试使用手动定义的schema
-    let inputSchema: Record<string, "string"|"number"|"json"> | undefined = extractSimpleSchema(t.inputSchema);
+    let inputSchema: Record<string, "string"|"number"|"json"|"boolean"> | undefined = extractSimpleSchema(t.inputSchema);
     if (!inputSchema) {
       inputSchema = getManualSchema(t.name);
     }

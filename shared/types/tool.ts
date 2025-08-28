@@ -1,4 +1,4 @@
-export type SimpleSchemaType = "string" | "number" | "json";
+export type SimpleSchemaType = "string" | "number" | "json" | "boolean";
 
 export type ToolSpec = {
 	name: string;

@@ -20,6 +20,7 @@
           <div v-for="(type, key) in currentTool.inputSchema || {}" :key="key" class="form-row">
             <label>{{ key }} ({{ type }})</label>
             <el-input-number v-if="type === 'number'" v-model="toolArgsNumber[key]" :controls="false" />
+            <el-switch v-else-if="type === 'boolean'" v-model="toolArgsBoolean[key]" active-text="true" inactive-text="false" />
             <el-input v-else-if="type !== 'json'" v-model="toolArgsText[key]" />
             <el-input v-else v-model="toolArgsText[key]" type="textarea" :rows="3" placeholder="JSON" />
           </div>
@@ -40,7 +41,7 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useApi } from "@/composables/useApi";
 
-type UiTool = { name: string; title?: string; description?: string; inputSchema?: Record<string, "string"|"number"|"json"> };
+type UiTool = { name: string; title?: string; description?: string; inputSchema?: Record<string, "string"|"number"|"json"|"boolean"> };
 
 const { get, post } = useApi();
 
@@ -48,6 +49,7 @@ const tools = ref<UiTool[]>([]);
 const selectedToolName = ref("");
 const toolArgsText = ref<Record<string, string>>({});
 const toolArgsNumber = ref<Record<string, number | null>>({});
+const toolArgsBoolean = ref<Record<string, boolean>>({});
 const toolResult = ref("");
 const currentTool = computed(() => tools.value.find(t => t.name === selectedToolName.value));
 const upstreamStatus = ref<Record<string, { namespace?: string; avgLatencyMs: number }>>({});
@@ -83,11 +85,17 @@ async function loadTools() {
 function onSelectTool() {
   toolArgsText.value = {};
   toolArgsNumber.value = {};
+  toolArgsBoolean.value = {};
   const t = currentTool.value;
   if (t?.inputSchema) {
     for (const [k, type] of Object.entries(t.inputSchema)) {
-      if (type === 'number') toolArgsNumber.value[k] = null;
-      else toolArgsText.value[k] = "";
+      if (type === 'number') {
+        toolArgsNumber.value[k] = null;
+      } else if (type === 'boolean') {
+        toolArgsBoolean.value[k] = false;
+      } else {
+        toolArgsText.value[k] = "";
+      }
     }
   }
   toolResult.value = "";
@@ -102,10 +110,14 @@ async function callTool() {
       if (type === "number") {
         const n = toolArgsNumber.value[k];
         args[k] = n == null ? null : Number(n);
+      } else if (type === "boolean") {
+        args[k] = toolArgsBoolean.value[k] ?? false;
       } else if (type === "json") {
         const raw = toolArgsText.value[k] ?? "";
         try { args[k] = raw ? JSON.parse(raw) : null; } catch { ElMessage.error(`${k} 不是合法 JSON`); return; }
-      } else args[k] = toolArgsText.value[k] ?? "";
+      } else {
+        args[k] = toolArgsText.value[k] ?? "";
+      }
     }
   }
   const response = await post("/api/tools/call", {
