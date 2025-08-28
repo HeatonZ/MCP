@@ -43,12 +43,12 @@ const cfg = await loadConfig();
 const _cfgWatcher = startConfigWatcher();
 
 // 记录服务器启动时间
-(globalThis as any).__serverStartTime = Date.now();
+(globalThis as Record<string, unknown>).__serverStartTime = Date.now();
 
 // 创建全局单例 MCP 服务器实例，避免每次请求都重新创建
 let globalMcpServer: Awaited<ReturnType<typeof createMcpServer>> | null = null;
 
-async function getGlobalMcpServer() {
+export async function getGlobalMcpServer() {
   if (!globalMcpServer) {
     globalMcpServer = await createMcpServer();
   }
@@ -139,7 +139,7 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
       server: {
         name: currentCfg.serverName,
         version: currentCfg.version,
-        uptime: Date.now() - (globalThis as any).__serverStartTime || 0
+        uptime: Date.now() - ((globalThis as Record<string, unknown>).__serverStartTime as number || 0)
       },
       mcp: {
         sessions: sessionStats,
@@ -162,7 +162,7 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
           status: result.success ? 200 : 401,
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
-      } catch (e) {
+      } catch (_e) {
         return new Response(JSON.stringify({ success: false, message: "Invalid request body" }), { 
           status: 400, 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 

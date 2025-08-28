@@ -133,16 +133,72 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
       const uri = String(p.uri ?? "");
       if (!uri) return err(id, -32602, "Missing uri parameter");
       
-      // 简化处理：直接从本地资源读取，不需要 upstream 参数
       try {
-        // 这里应该根据实际的资源读取逻辑来实现
-        return { 
-          jsonrpc: "2.0", 
-          id, 
-          result: { 
-            contents: [{ uri, text: "Resource content placeholder" }] 
-          } 
-        };
+        // 直接处理资源读取逻辑
+        if (uri.startsWith('upstream://')) {
+          // 上游资源桥接
+          const parts = uri.replace('upstream://', '').split('/');
+          if (parts.length < 2) {
+            return err(id, -32602, "Invalid upstream resource URI format");
+          }
+          
+          const upstreamName = parts[0];
+          const encodedOriginalUri = parts.slice(1).join('/');
+          
+          try {
+            const originalUri = (globalThis as Record<string, unknown>).atob ? 
+              (globalThis as { atob: (s: string) => string }).atob(encodedOriginalUri) : 
+              encodedOriginalUri;
+            const { readAggregatedResource } = await import("@server/upstream/index.ts");
+            const result = await readAggregatedResource(upstreamName, originalUri);
+            
+            return { 
+              jsonrpc: "2.0", 
+              id, 
+              result 
+            };
+          } catch (e) {
+            return err(id, -32000, "Failed to read upstream resource", { error: String(e) });
+          }
+        } else if (uri.startsWith('config://')) {
+          // 配置资源
+          const { getConfigSync, loadConfig } = await import("@server/config.ts");
+          const config = getConfigSync() ?? await loadConfig();
+          return { 
+            jsonrpc: "2.0", 
+            id, 
+            result: { 
+              contents: [{ uri, text: JSON.stringify(config, null, 2) }] 
+            } 
+          };
+        } else if (uri.startsWith('greeting://')) {
+          // 问候资源
+          const name = uri.replace('greeting://', '');
+          return { 
+            jsonrpc: "2.0", 
+            id, 
+            result: { 
+              contents: [{ uri, text: `Hello, ${name}!` }] 
+            } 
+          };
+        } else if (uri.startsWith('filex://')) {
+          // 文件资源
+          const path = uri.replace('filex://', '');
+          try {
+            const text = await Deno.readTextFile(String(path));
+            return { 
+              jsonrpc: "2.0", 
+              id, 
+              result: { 
+                contents: [{ uri, text }] 
+              } 
+            };
+          } catch (e) {
+            return err(id, -32000, "Failed to read file", { error: String(e) });
+          }
+        } else {
+          return err(id, -32601, "Unsupported resource URI scheme");
+        }
       } catch (e) {
         return err(id, -32000, "Resource read failed", { error: String(e) });
       }
