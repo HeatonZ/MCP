@@ -38,7 +38,8 @@ const getAuthToken = () => {
 
 // 检查是否在开发环境
 const isDevelopment = () => {
-  return import.meta.env.DEV || systemConfig.value.environment === 'development';
+  return window.location.hostname === 'localhost';
+  // return import.meta.env.DEV || systemConfig.value.environment === 'development';
 };
 
 // 创建带认证的fetch请求

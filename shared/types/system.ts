@@ -27,10 +27,50 @@ export type AppConfig = {
 	};
 	logging?: {
 		maxLogs: number;
+		verboseMcp?: boolean;
+	};
+	/** MCP连接管理配置 */
+	mcp?: {
+		heartbeat?: {
+			intervalMs?: number;
+			timeoutMs?: number;
+		};
+		session?: {
+			maxIdleMs?: number;
+			cleanupIntervalMs?: number;
+		};
+		reconnect?: {
+			enabled?: boolean;
+			maxAttempts?: number;
+			baseDelayMs?: number;
+			maxDelayMs?: number;
+		};
 	};
 };
 
 export type UpstreamTransport = "stdio" | "http" | "sse" | "ws";
+
+/** MCP连接状态 */
+export type McpConnectionStatus = "connected" | "connecting" | "disconnected" | "reconnecting" | "error";
+
+/** MCP会话统计信息 */
+export type McpSessionStats = {
+	total: number;
+	active: number;
+	avgHeartbeats: number;
+};
+
+/** MCP连接诊断信息 */
+export type McpDiagnostics = {
+	timestamp: number;
+	server: string;
+	config: {
+		httpEnabled: boolean;
+		sseEnabled: boolean;
+	};
+	upstreams: number;
+	sessions?: McpSessionStats;
+};
 
 export type UpstreamAuthConfig =
 	| { type: "bearer"; token: string }

@@ -42,6 +42,9 @@ function contentTypeByExt(p: string): string {
 const cfg = await loadConfig();
 const _cfgWatcher = startConfigWatcher();
 
+// 记录服务器启动时间
+(globalThis as any).__serverStartTime = Date.now();
+
 // 创建全局单例 MCP 服务器实例，避免每次请求都重新创建
 let globalMcpServer: Awaited<ReturnType<typeof createMcpServer>> | null = null;
 
@@ -127,7 +130,26 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
   }
 
   if (url.pathname === "/api/health") {
-    return new Response(JSON.stringify({ ok: true, ts: Date.now() }), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+    // 增强健康检查，包含MCP连接状态
+    const { getSessionStats } = await import("@server/http/mcp_sessions.ts");
+    const sessionStats = getSessionStats();
+    const health = {
+      ok: true,
+      timestamp: Date.now(),
+      server: {
+        name: currentCfg.serverName,
+        version: currentCfg.version,
+        uptime: Date.now() - (globalThis as any).__serverStartTime || 0
+      },
+      mcp: {
+        sessions: sessionStats,
+        endpoints: {
+          http: currentCfg.features?.enableMcpHttp !== false,
+          sse: currentCfg.features?.enableMcpSse !== false
+        }
+      }
+    };
+    return new Response(JSON.stringify(health, null, 2), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
   }
 
   // 认证API路由
@@ -210,8 +232,8 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
         return new Response(JSON.stringify(result), { 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
-      } catch (e) {
-        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+      } catch (_e) {
+        return new Response(JSON.stringify({ success: false, message: String(_e) }), { 
           status: 500, 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
@@ -227,8 +249,8 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
         return new Response(JSON.stringify(result), { 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
-      } catch (e) {
-        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+      } catch (_e) {
+        return new Response(JSON.stringify({ success: false, message: String(_e) }), { 
           status: 500, 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
@@ -244,8 +266,8 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
         return new Response(JSON.stringify(result), { 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
-      } catch (e) {
-        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+      } catch (_e) {
+        return new Response(JSON.stringify({ success: false, message: String(_e) }), { 
           status: 500, 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
@@ -261,8 +283,8 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
         return new Response(JSON.stringify(result), { 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
-      } catch (e) {
-        return new Response(JSON.stringify({ success: false, message: String(e) }), { 
+      } catch (_e) {
+        return new Response(JSON.stringify({ success: false, message: String(_e) }), { 
           status: 500, 
           headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
         });
@@ -297,6 +319,30 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
   }
   if (url.pathname === "/api/logs/snapshot") {
     return new Response(JSON.stringify(getSnapshot(), null, 2), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+  }
+
+  // MCP连接状态监控API
+  if (url.pathname === "/api/mcp/sessions") {
+    if (req.method === "GET") {
+      const { getSessionStats } = await import("@server/http/mcp_sessions.ts");
+      const stats = getSessionStats();
+      return new Response(JSON.stringify(stats, null, 2), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+    }
+  }
+
+  if (url.pathname === "/api/mcp/diagnostics") {
+    if (req.method === "GET") {
+      const diagnostics = {
+        timestamp: Date.now(),
+        server: globalMcpServer ? "initialized" : "not_initialized",
+        config: {
+          httpEnabled: currentCfg.features?.enableMcpHttp !== false,
+          sseEnabled: currentCfg.features?.enableMcpSse !== false
+        },
+        upstreams: currentCfg.upstreams?.length || 0
+      };
+      return new Response(JSON.stringify(diagnostics, null, 2), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+    }
   }
 
   if (url.pathname === "/api/config") {

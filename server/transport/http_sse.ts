@@ -6,11 +6,24 @@ import { handleRpcPayload } from "@server/transport/rpc.ts";
 const encoder = new TextEncoder();
 
 export function createSseEndpoints(_server: McpServer) {
-  function createStream(controller: ReadableStreamDefaultController<Uint8Array>, _sessionId: string) {
+  function createStream(controller: ReadableStreamDefaultController<Uint8Array>, sessionId: string) {
+    let pingCount = 0;
     const ping = setInterval(() => {
-      try { controller.enqueue(encoder.encode(`: keep-alive\n\n`)); } catch (_) { /* stream closed */ }
-    }, 15000);
-    return () => { try { clearInterval(ping); } catch (_) { /* cleared */ } };
+      try { 
+        pingCount++;
+        controller.enqueue(encoder.encode(`: keep-alive-${pingCount} ${Date.now()}\n\n`)); 
+        logInfo("mcp-sse", "heartbeat sent", { sessionId, pingCount });
+      } catch (error) { 
+        logError("mcp-sse", "heartbeat failed", { sessionId, error: String(error) });
+        clearInterval(ping);
+      }
+    }, 10000); // 从15秒缩短到10秒
+    return () => { 
+      try { 
+        clearInterval(ping); 
+        logInfo("mcp-sse", "heartbeat stopped", { sessionId, totalPings: pingCount });
+      } catch (_) { /* cleared */ } 
+    };
   }
 
   async function handleOpen(req: Request): Promise<Response> {
@@ -21,18 +34,24 @@ export function createSseEndpoints(_server: McpServer) {
 
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
-        const dispose = createStream(controller, sid ?? "");
         const rec = createSession({
           id: sid,
           enqueue: (line) => { try { controller.enqueue(line); } catch (_) { /* stream closed */ } },
           close: () => { try { controller.close(); } catch (_) { /* already closed */ } },
         });
+        const dispose = createStream(controller, rec.id);
         controller.enqueue(sseLine({ session: rec.id }, "session"));
         logInfo("mcp-sse", "open", { session: rec.id });
-        (req.signal as AbortSignal).addEventListener("abort", () => {
+        const cleanup = () => {
           dispose();
           closeSession(rec.id);
-        });
+          logInfo("mcp-sse", "connection cleanup completed", { sessionId: rec.id });
+        };
+        
+        (req.signal as AbortSignal).addEventListener("abort", cleanup);
+        
+        // 添加错误处理 - 注意：ReadableStreamDefaultController没有addEventListener
+        // 错误处理将通过try-catch和abort信号来实现
       },
       cancel() {
         // closed by client; session will be cleaned by abort handler above

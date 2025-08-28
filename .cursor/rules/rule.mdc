@@ -1,7 +1,6 @@
 ---
-description: 
-globs: 
-alwaysApply: true
+description: 严格模式，禁止任何未经授权的修改
+alwaysApply: false
 ---
 ## RIPER-5
 

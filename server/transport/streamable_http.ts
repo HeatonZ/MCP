@@ -47,24 +47,61 @@ function getOrCreateSession(sessionId?: string): StreamableSession {
 function cleanupExpiredSessions() {
   const now = Date.now();
   const maxAge = 30 * 60 * 1000; // 30 minutes
+  const warningAge = 25 * 60 * 1000; // 25 minutes - 提前警告
   
   for (const [sessionId, session] of sessions.entries()) {
-    if (now - session.lastSeenAt > maxAge) {
+    const age = now - session.lastSeenAt;
+    
+    if (age > maxAge) {
       if (session.controller) {
         try {
+          // 发送会话即将过期的通知
+          session.controller.enqueue(encoder.encode(`event: session_expired\ndata: {"reason":"timeout","sessionId":"${sessionId}"}\n\n`));
           session.controller.close();
         } catch (_) {
           // ignore
         }
       }
       sessions.delete(sessionId);
-      logInfo("streamable-http", "session expired", { sessionId });
+      logInfo("streamable-http", "session expired", { sessionId, ageMinutes: Math.round(age / 60000) });
+    } else if (age > warningAge && session.controller) {
+      try {
+        // 发送会话即将过期的警告
+        session.controller.enqueue(encoder.encode(`event: session_warning\ndata: {"reason":"expiring_soon","sessionId":"${sessionId}","expiresIn":${maxAge - age}}\n\n`));
+      } catch (_) {
+        // ignore
+      }
     }
   }
 }
 
-// 定期清理过期会话
-setInterval(cleanupExpiredSessions, 5 * 60 * 1000); // 每5分钟清理一次
+// 定期清理过期会话 - 增加频率以提高响应性
+setInterval(cleanupExpiredSessions, 2 * 60 * 1000); // 每2分钟清理一次
+
+// 添加连接健康检查
+function performHealthCheck() {
+  const now = Date.now();
+  const staleThreshold = 60 * 1000; // 1分钟无活动视为可能有问题
+  
+  for (const [sessionId, session] of sessions.entries()) {
+    if (session.isStreaming && session.controller && (now - session.lastSeenAt > staleThreshold)) {
+      try {
+        // 发送健康检查ping
+        session.controller.enqueue(encoder.encode(`event: health_check\ndata: {"timestamp":${now},"sessionId":"${sessionId}"}\n\n`));
+        logInfo("streamable-http", "health check sent", { sessionId });
+      } catch (error) {
+        logError("streamable-http", "health check failed", { sessionId, error: String(error) });
+        // 健康检查失败，清理会话
+        session.isStreaming = false;
+        session.controller = undefined;
+        sessions.delete(sessionId);
+      }
+    }
+  }
+}
+
+// 每30秒进行一次健康检查
+setInterval(performHealthCheck, 30 * 1000);
 
 export async function handleStreamableHttp(_server: McpServer, req: Request): Promise<Response> {
   try {
@@ -96,17 +133,20 @@ export async function handleStreamableHttp(_server: McpServer, req: Request): Pr
           controller.enqueue(encoder.encode(`event: message\n`));
           controller.enqueue(encoder.encode(`data: ${result}\n\n`));
           
-          // 设置定期 ping
-          const pingInterval = setInterval(() => {
-            try {
-              controller.enqueue(encoder.encode(`: ping\n\n`));
-            } catch (_) {
-              clearInterval(pingInterval);
-            }
-          }, 15000);
+                  // 设置定期 ping - 缩短间隔提高连接稳定性
+        const pingInterval = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(`: ping ${Date.now()}\n\n`));
+            // 更新会话活跃时间
+            session.lastSeenAt = Date.now();
+          } catch (error) {
+            logError("streamable-http", "ping failed", { sessionId: session.id, error: String(error) });
+            clearInterval(pingInterval);
+          }
+        }, 10000); // 从15秒缩短到10秒
           
-          // 清理处理
-          req.signal.addEventListener("abort", () => {
+          // 清理处理 - 增强错误处理和日志
+          const cleanup = () => {
             clearInterval(pingInterval);
             session.isStreaming = false;
             session.controller = undefined;
@@ -115,7 +155,13 @@ export async function handleStreamableHttp(_server: McpServer, req: Request): Pr
             } catch (_) {
               // ignore
             }
-          });
+            logInfo("streamable-http", "POST SSE connection closed", { sessionId: session.id });
+          };
+          
+          req.signal.addEventListener("abort", cleanup);
+          
+          // 添加错误处理 - 注意：ReadableStreamDefaultController没有addEventListener
+          // 错误处理将通过try-catch和abort信号来实现
         },
       });
       
@@ -185,17 +231,20 @@ export function handleStreamableHttpGet(_server: McpServer, req: Request): Respo
         controller.enqueue(encoder.encode(`event: serverInfo\n`));
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(serverInfo)}\n\n`));
         
-        // 设置定期 ping
+        // 设置定期 ping - 缩短间隔提高连接稳定性
         const pingInterval = setInterval(() => {
           try {
-            controller.enqueue(encoder.encode(`: ping\n\n`));
-          } catch (_) {
+            controller.enqueue(encoder.encode(`: ping ${Date.now()}\n\n`));
+            // 更新会话活跃时间
+            session.lastSeenAt = Date.now();
+          } catch (error) {
+            logError("streamable-http", "ping failed", { sessionId: session.id, error: String(error) });
             clearInterval(pingInterval);
           }
-        }, 15000);
+        }, 10000); // 从15秒缩短到10秒
         
-        // 清理处理
-        req.signal.addEventListener("abort", () => {
+        // 清理处理 - 增强错误处理和日志
+        const cleanup = () => {
           clearInterval(pingInterval);
           session.isStreaming = false;
           session.controller = undefined;
@@ -204,8 +253,13 @@ export function handleStreamableHttpGet(_server: McpServer, req: Request): Respo
           } catch (_) {
             // ignore
           }
-          logInfo("streamable-http", "SSE connection closed", { sessionId: session.id });
-        });
+          logInfo("streamable-http", "GET SSE connection closed", { sessionId: session.id });
+        };
+        
+        req.signal.addEventListener("abort", cleanup);
+        
+        // 添加错误处理 - 注意：ReadableStreamDefaultController没有addEventListener
+        // 错误处理将通过try-catch和abort信号来实现
       },
     });
     
