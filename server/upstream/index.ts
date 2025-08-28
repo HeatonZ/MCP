@@ -115,6 +115,9 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
       result[key] = "string";
     } else if (type === "number" || type === "integer") {
       result[key] = "number";
+    } else if (type === "boolean") {
+      // boolean类型在前端界面中用字符串表示 (true/false)
+      result[key] = "string";
     } else if (type === "object" || type === "array") {
       result[key] = "json";
     } else {
@@ -137,6 +140,18 @@ function getManualSchema(toolName: string): Record<string, "string"|"number"|"js
       "context7CompatibleLibraryID": "string",  // 必需参数
       "topic": "string",                        // 可选参数
       "tokens": "number"                        // 可选参数
+    },
+    // sequential-thinking工具的fallback schema（当MCP传输中schema丢失时使用）
+    "sequentialthinking": {
+      "thought": "string",                      // 当前思考步骤（必需）
+      "nextThoughtNeeded": "string",            // 是否需要更多思考 true/false（必需）
+      "thoughtNumber": "number",                // 当前思考编号（必需）
+      "totalThoughts": "number",                // 预估总思考数（必需）
+      "isRevision": "string",                   // 是否为修正思考 true/false（可选）
+      "revisesThought": "number",               // 修正的思考编号（可选）
+      "branchFromThought": "number",            // 分支起始思考编号（可选）
+      "branchId": "string",                     // 分支标识符（可选）
+      "needsMoreThoughts": "string"             // 是否需要更多思考 true/false（可选）
     }
   };
   
