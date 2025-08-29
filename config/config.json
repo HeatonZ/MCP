@@ -9,7 +9,13 @@
     "enableMcpHttp": true
   },
   "cors": {
-    "allowedOrigins": ["https://*.heatonz.deno.net"]
+    "allowedOrigins": [
+      "https://*.heatonz.deno.net",
+      "http://localhost:*",
+      "https://localhost:*",
+      "http://127.0.0.1:*",
+      "https://127.0.0.1:*"
+    ]
   },
   "upstreams": [
     {

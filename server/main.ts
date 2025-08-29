@@ -45,7 +45,8 @@ function corsHeaders(origin: string | null, allowedOrigins: string[] | undefined
   return {
     "Access-Control-Allow-Origin": allow || "*",
     "Access-Control-Allow-Methods": "GET,PUT,POST,DELETE,OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Credentials": "true",
   };
 }
 
