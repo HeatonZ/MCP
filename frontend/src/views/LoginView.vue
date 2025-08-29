@@ -85,7 +85,7 @@
       
       <div class="login-tips">
         <el-alert
-          title="默认账号：admin，密码：admin"
+          title="a"
           type="info"
           :closable="false"
           show-icon

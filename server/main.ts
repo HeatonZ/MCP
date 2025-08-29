@@ -12,8 +12,36 @@ import { safeResolve, listFilesRecursive } from "@server/security/paths.ts";
 import { requireAuth, handleLogin, handleLogout, getAuthStatus } from "@server/auth.ts";
 import { testUpstreamConnection, testToolCall, testResourceRead, testPromptGet } from "@server/test_api.ts";
 
+function isOriginAllowed(origin: string, allowedOrigins: string[]): boolean {
+  for (const allowed of allowedOrigins) {
+    if (allowed === "*") return true;
+    if (allowed === origin) return true;
+    
+    // 支持通配符匹配，如 https://*.heatonz.deno.net
+    if (allowed.includes("*")) {
+      const pattern = allowed.replace(/\*/g, ".*");
+      const regex = new RegExp(`^${pattern}$`);
+      if (regex.test(origin)) return true;
+    }
+  }
+  return false;
+}
+
 function corsHeaders(origin: string | null, allowedOrigins: string[] | undefined): HeadersInit {
-  const allow = allowedOrigins && allowedOrigins.length && allowedOrigins[0] !== "*" ? (origin && allowedOrigins.includes(origin) ? origin : "") : (origin ?? "*");
+  let allow = "*";
+  
+  if (allowedOrigins && allowedOrigins.length > 0) {
+    if (allowedOrigins[0] === "*") {
+      allow = origin ?? "*";
+    } else if (origin && isOriginAllowed(origin, allowedOrigins)) {
+      allow = origin;
+    } else {
+      allow = "";
+    }
+  } else {
+    allow = origin ?? "*";
+  }
+  
   return {
     "Access-Control-Allow-Origin": allow || "*",
     "Access-Control-Allow-Methods": "GET,PUT,POST,DELETE,OPTIONS",

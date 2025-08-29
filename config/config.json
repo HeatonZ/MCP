@@ -8,6 +8,9 @@
     "enableMcpSse": true,
     "enableMcpHttp": true
   },
+  "cors": {
+    "allowedOrigins": ["https://*.heatonz.deno.net"]
+  },
   "upstreams": [
     {
       "name": "context7-proxy",
