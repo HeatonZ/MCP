@@ -3,7 +3,7 @@ import type { SystemConfig } from '@shared/types/system_config';
 
 // 系统配置状态
 const systemConfig = ref<SystemConfig>({
-  backendUrl: 'http://localhost:8787',
+  backendUrl: 'http://10.254.61.224:8787',
   environment: 'development',
   apiTimeout: 30000,
   enableDebug: false,
@@ -38,7 +38,7 @@ const getAuthToken = () => {
 
 // 检查是否在开发环境
 const isDevelopment = () => {
-  return window.location.hostname === 'localhost';
+  return window.location.hostname === 'localhost' || window.location.hostname === '10.254.61.224';
   // return import.meta.env.DEV || systemConfig.value.environment === 'development';
 };
 
@@ -97,7 +97,7 @@ const createAuthenticatedFetch = (url: string, options: RequestInit = {}) => {
 // API客户端方法
 export function useApi() {
   // 确保配置已加载
-  if (!systemConfig.value.backendUrl || systemConfig.value.backendUrl === 'http://localhost:8787') {
+  if (!systemConfig.value.backendUrl || systemConfig.value.backendUrl === 'http://localhost:8787' || systemConfig.value.backendUrl === 'http://10.254.61.224:8787') {
     loadSystemConfig();
   }
   

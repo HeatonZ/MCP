@@ -184,7 +184,7 @@ const localUpstream = ref<UpstreamConfig>({
 
 const argsText = ref('');
 const headersText = ref('{}');
-const reconnectEnabled = ref(false);
+const reconnectEnabled = ref(true); // 默认启用重连
 const maxRetries = ref(5);
 
 const formRules: FormRules = {
@@ -268,7 +268,15 @@ const updateReconnectConfig = () => {
       heartbeatMs: 30000,
     };
   } else {
-    delete localUpstream.value.reconnect;
+    // 不删除reconnect配置，而是设置enabled为false
+    localUpstream.value.reconnect = {
+      enabled: false,
+      initialDelayMs: 1000,
+      maxDelayMs: 30000,
+      factor: 2,
+      maxRetries: 5,
+      heartbeatMs: 30000,
+    };
   }
 };
 
@@ -306,8 +314,14 @@ watch(() => props.upstream, (newUpstream) => {
       headersText.value = JSON.stringify((newUpstream as any).headers || {}, null, 2);
     }
     
-    reconnectEnabled.value = !!newUpstream.reconnect?.enabled;
+    // 如果没有重连配置，默认启用
+    reconnectEnabled.value = newUpstream.reconnect?.enabled !== false;
     maxRetries.value = newUpstream.reconnect?.maxRetries as number || 5;
+    
+    // 如果是新建上游且没有重连配置，设置默认重连配置
+    if (!newUpstream.reconnect) {
+      updateReconnectConfig();
+    }
   }
 }, { immediate: true });
 </script>

@@ -324,14 +324,21 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
   if (url.pathname === "/api/logs/sse") {
     // 对于SSE，检查URL参数中的token（因为EventSource不支持自定义头）
     const token = url.searchParams.get('token');
+    
     if (token) {
-      const auth = requireAuth(new Request(req.url, {
-        ...req,
-        headers: {
-          ...req.headers,
-          'Authorization': `Bearer ${token}`
-        }
-      }));
+      // 创建一个新的headers对象，包含Authorization头
+      const headers = new Headers(req.headers);
+      headers.set('Authorization', `Bearer ${token}`);
+      
+      
+      const authReq = new Request(req.url, {
+        method: req.method,
+        headers: headers,
+        body: req.body,
+      });
+      
+      const auth = requireAuth(authReq);
+      
       if (!auth.authenticated) {
         return new Response("Unauthorized", { status: 401, headers: corsHeaders(origin, cors) });
       }
@@ -475,8 +482,27 @@ await initPlugins();
 // 预先初始化全局 MCP 服务器实例，确保启动时就准备好
 await getGlobalMcpServer();
 
+// 检查端口是否被占用
+async function checkPortInUse(port: number): Promise<boolean> {
+  try {
+    const conn = await Deno.connect({ hostname: "localhost", port });
+    conn.close();
+    return true; // 端口被占用
+  } catch {
+    return false; // 端口未被占用
+  }
+}
+
 Deno.addSignalListener?.("SIGINT", () => { try { disposePlugins(); } catch (_) { /* ignore */ } Deno.exit(); });
 Deno.addSignalListener?.("SIGTERM", () => { try { disposePlugins(); } catch (_) { /* ignore */ } Deno.exit(); });
+
+// 启动前检查端口占用
+const portInUse = await checkPortInUse(cfg.httpPort);
+if (portInUse) {
+  console.warn(`⚠️  警告：端口 ${cfg.httpPort} 已被占用，但仍继续启动服务`);
+} else {
+  console.log(`✅ 端口 ${cfg.httpPort} 可用`);
+}
 
 Deno.serve({ port: cfg.httpPort }, async (req) => {
   const started = Date.now();

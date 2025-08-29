@@ -91,10 +91,76 @@ export async function saveConfig(cfg: AppConfig): Promise<void> {
 	if (!parsed.success) {
 		throw new Error("Invalid configuration: " + parsed.error.message);
 	}
+	
+	// 保存旧配置用于比较
+	const oldConfig = cachedConfig;
+	
 	const pretty = JSON.stringify(parsed.data, null, 2);
 	await Deno.writeTextFile(CONFIG_PATH, pretty);
 	cachedConfig = parsed.data as AppConfig;
+	
+	// 检查上游配置是否有变化，如果有则重启相关服务
+	if (oldConfig) {
+		await handleUpstreamConfigChanges(oldConfig, cachedConfig);
+	}
+	
 	for (const fn of subscribers) fn(cachedConfig);
+}
+
+async function handleUpstreamConfigChanges(oldConfig: AppConfig, newConfig: AppConfig): Promise<void> {
+	const { reconnectUpstream } = await import("@server/upstream/index.ts");
+	const { logInfo } = await import("@server/logger.ts");
+	
+	const oldUpstreams = oldConfig.upstreams || [];
+	const newUpstreams = newConfig.upstreams || [];
+	
+	// 创建映射以便比较
+	const oldUpstreamMap = new Map(oldUpstreams.map(u => [u.name, u]));
+	const newUpstreamMap = new Map(newUpstreams.map(u => [u.name, u]));
+	
+	// 检查需要重启的上游服务
+	const upstreamsToRestart = new Set<string>();
+	
+	// 检查修改的上游
+	for (const [name, newUpstream] of newUpstreamMap) {
+		const oldUpstream = oldUpstreamMap.get(name);
+		if (oldUpstream) {
+			// 比较关键配置是否有变化
+			if (hasUpstreamConfigChanged(oldUpstream, newUpstream)) {
+				upstreamsToRestart.add(name);
+			}
+		}
+	}
+	
+	// 检查新增的上游（需要初始化）
+	for (const [name] of newUpstreamMap) {
+		if (!oldUpstreamMap.has(name)) {
+			upstreamsToRestart.add(name);
+		}
+	}
+	
+	// 重启需要更新的上游服务
+	for (const name of upstreamsToRestart) {
+		try {
+			logInfo("config", `重启上游服务: ${name}`);
+			await reconnectUpstream(name);
+		} catch (error) {
+			logInfo("config", `重启上游服务失败: ${name}`, { error: String(error) });
+		}
+	}
+}
+
+function hasUpstreamConfigChanged(old: Record<string, unknown>, new_: Record<string, unknown>): boolean {
+	// 比较关键配置字段
+	const keyFields = ['transport', 'url', 'command', 'args', 'cwd', 'env', 'headers', 'enabled', 'namespace'];
+	
+	for (const field of keyFields) {
+		if (JSON.stringify(old[field]) !== JSON.stringify(new_[field])) {
+			return true;
+		}
+	}
+	
+	return false;
 }
 
 export function onConfigChange(cb: (cfg: AppConfig) => void): () => void {

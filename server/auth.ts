@@ -3,10 +3,10 @@ import type { LoginRequest, LoginResponse, AuthStatus } from "@shared/types/auth
 // 简单的内存session存储
 const sessions = new Map<string, { username: string; expires: number }>();
 
-// 固定用户配置
+// 用户配置，密码从环境变量获取
 const ADMIN_USER = {
   username: "admin",
-  password: "admin",
+  password: Deno.env.get("PASSWORD") || "admin",
   role: "admin"
 };
 
@@ -64,12 +64,19 @@ setInterval(cleanupExpiredSessions, 60 * 60 * 1000); // 每小时清理一次
 // 认证中间件
 export function requireAuth(req: Request): { authenticated: boolean; username?: string } {
   const authHeader = req.headers.get("Authorization");
+  
+  // 添加调试日志
+  console.log(`🔐 Auth check - URL: ${new URL(req.url).pathname}, Auth header: ${authHeader ? 'present' : 'missing'}`);
+  
   if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    console.log(`🔐 Auth failed - Invalid header format`);
     return { authenticated: false };
   }
   
   const token = authHeader.substring(7);
   const validation = validateSession(token);
+  
+  console.log(`🔐 Token validation - Valid: ${validation.valid}, Username: ${validation.username}`);
   
   return {
     authenticated: validation.valid,

@@ -21,7 +21,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref } from "vue";
 import { ElMessage } from "element-plus";
 import { useApi } from "@/composables/useApi";
 import { useAuth } from "@/composables/useAuth";
@@ -72,6 +72,13 @@ async function loadLogsSnapshot() {
 
 onMounted(() => {
   startLogs();
+});
+
+onUnmounted(() => {
+  if (evtSrc) {
+    evtSrc.close();
+    evtSrc = null;
+  }
 });
 </script>
 

@@ -338,8 +338,23 @@ export async function initUpstreams(): Promise<void> {
     } catch (e) {
       logError("upstream", "connect failed", { name: u.name, error: String(e) } as Record<string, unknown>);
       markDisconnected(u.name, String(e));
+      
+      // 如果启用了重连，尝试重连
+      const reconnectConfig = u.reconnect ?? { enabled: true };
+      if (reconnectConfig.enabled !== false) {
+        scheduleReconnect(u.name);
+      }
     }
   }
+}
+
+async function scheduleReconnect(upstreamName: string): Promise<void> {
+  const { ConnectionManager } = await import("@server/transport/connection_manager.ts");
+  const connectionManager = new ConnectionManager();
+  
+  await connectionManager.attemptReconnect(upstreamName, async () => {
+    return await reconnectUpstream(upstreamName);
+  });
 }
 
 export async function reconnectUpstream(name: string): Promise<boolean> {
