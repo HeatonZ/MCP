@@ -1,0 +1,35 @@
+{
+  "nodeModulesDir": "auto",
+  "compilerOptions": {
+    "lib": ["deno.window", "dom", "esnext", "deno.unstable"],
+    "strict": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "vue"
+  },
+  "imports": {
+    "vue": "npm:vue@^3.5.11",
+    "vue-router": "npm:vue-router@^4.4.5",
+    "element-plus": "npm:element-plus@^2.7.8",
+    "monaco-editor": "npm:monaco-editor@^0.52.0",
+    "vite": "npm:vite@^5.4.8",
+    "@vitejs/plugin-vue": "npm:@vitejs/plugin-vue@^5.1.2",
+    "typescript": "npm:typescript@^5.5.4",
+    "vitest": "npm:vitest@^2.0.5",
+    "@": "./src/",
+    "@shared": "../shared/"
+  },
+  "tasks": {
+    "dev": "deno run -A npm:vite --host",
+    "build": "deno run -A npm:vite build",
+    "preview": "deno run -A npm:vite preview",
+    "test": "deno run -A npm:vitest run"
+  },
+  "fmt": {
+    "useTabs": false,
+    "lineWidth": 100,
+    "include": ["src/"]
+  },
+  "lint": {
+    "include": ["src/"]
+  }
+}
