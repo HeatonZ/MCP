@@ -140,6 +140,18 @@ function getManualSchema(toolName: string): Record<string, "string"|"number"|"js
       "topic": "string",                        // 可选参数
       "tokens": "number"                        // 可选参数
     },
+    // Figma工具的fallback schema（当MCP传输中schema丢失时使用）
+    "get_figma_data": {
+      "fileKey": "string",                      // 必需参数：Figma文件的key
+      "nodeId": "string",                       // 可选参数：特定节点的ID
+      "depth": "number"                         // 可选参数：遍历深度
+    },
+    "download_figma_images": {
+      "fileKey": "string",                      // 必需参数：Figma文件的key
+      "nodes": "json",                          // 必需参数：要下载的节点数组
+      "localPath": "string",                    // 必需参数：本地保存路径
+      "pngScale": "number"                      // 可选参数：PNG缩放比例
+    },
     // sequential-thinking工具的fallback schema（当MCP传输中schema丢失时使用）
     "sequentialthinking": {
       "thought": "string",                      // 当前思考步骤（必需）
