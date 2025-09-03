@@ -20,7 +20,7 @@ const upstreams: Map<string, UpstreamInstance> = new Map();
 
 type JsonValue = null | string | number | boolean | JsonValue[] | { [k: string]: JsonValue };
 
-type ToolItem = { name: string; title?: string; description?: string; inputSchema?: Record<string, "string"|"number"|"json"> };
+type ToolItem = { name: string; title?: string; description?: string; inputSchema?: unknown };
 type ToolsListResult = { tools: ToolItem[] };
 type ToolCallResult = { content?: Array<{ type?: string; text?: string }> } & Record<string, unknown>;
 type ResourceItem = { uri: string; title?: string; mimeType?: string };
@@ -48,7 +48,8 @@ function asToolsListResult(v: unknown): ToolsListResult {
       if (isRecord(it) && typeof it.name === "string") {
         const title = asString(it.title);
         const description = asString(it.description);
-        tools.push({ name: it.name, title, description });
+        const inputSchema = it.inputSchema; // 保留原始的 inputSchema
+        tools.push({ name: it.name, title, description, inputSchema });
       }
     }
   }
@@ -100,15 +101,35 @@ function asGetPromptResult(v: unknown): GetPromptResult {
 }
 
 function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"number"|"json"|"boolean"> | undefined {
-  if (!isRecord(jsonSchema)) return undefined;
+  if (!isRecord(jsonSchema)) {
+    logWarn("upstream", "Schema is not a record", { schema: typeof jsonSchema } as Record<string, unknown>);
+    return undefined;
+  }
   
   const properties = jsonSchema.properties;
-  if (!isRecord(properties)) return undefined;
+  if (!isRecord(properties)) {
+    logWarn("upstream", "Schema has no valid properties", { 
+      hasProperties: !!jsonSchema.properties,
+      propertiesType: typeof jsonSchema.properties,
+      schemaKeys: Object.keys(jsonSchema)
+    } as Record<string, unknown>);
+    return undefined;
+  }
   
   const result: Record<string, "string"|"number"|"json"|"boolean"> = {};
+  const required = Array.isArray(jsonSchema.required) ? jsonSchema.required as string[] : [];
+  
+  logInfo("upstream", "Processing schema properties", {
+    propertiesCount: Object.keys(properties).length,
+    requiredFields: required,
+    allProperties: Object.keys(properties)
+  } as Record<string, unknown>);
   
   for (const [key, prop] of Object.entries(properties)) {
-    if (!isRecord(prop)) continue;
+    if (!isRecord(prop)) {
+      logWarn("upstream", `Property ${key} is not a record`, { propertyType: typeof prop } as Record<string, unknown>);
+      continue;
+    }
     
     const type = prop.type;
     if (type === "string") {
@@ -120,12 +141,19 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
     } else if (type === "object" || type === "array") {
       result[key] = "json";
     } else {
+      logWarn("upstream", `Unknown property type for ${key}`, { type, defaultingTo: "string" } as Record<string, unknown>);
       // 默认作为字符串处理
       result[key] = "string";
     }
   }
   
-  return Object.keys(result).length > 0 ? result : undefined;
+  const resultCount = Object.keys(result).length;
+  logInfo("upstream", "Schema extraction completed", {
+    extractedProperties: resultCount,
+    extractedSchema: result
+  } as Record<string, unknown>);
+  
+  return resultCount > 0 ? result : undefined;
 }
 
 // 为已知的上游工具手动定义缺失的schema
@@ -417,10 +445,25 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string): Prom
     const title = t.title ?? t.name;
     const description = t.description ?? "";
     const zodSchema = undefined;
+    
+    // 调试日志：记录原始 schema
+    console.log(`🔍 Processing tool ${t.name}`, { 
+      originalInputSchema: t.inputSchema ? JSON.stringify(t.inputSchema) : "undefined"
+    });
+    
     // 从上游工具的inputSchema中提取简化的schema信息，如果为空则尝试使用手动定义的schema
     let inputSchema: Record<string, "string"|"number"|"json"|"boolean"> | undefined = extractSimpleSchema(t.inputSchema);
+    
+    // 调试日志：记录提取结果
+    console.log(`🔍 Schema extraction result for ${t.name}`, { 
+      extractedSchema: inputSchema ? JSON.stringify(inputSchema) : "undefined"
+    });
+    
     if (!inputSchema) {
       inputSchema = getManualSchema(t.name);
+      console.log(`🔍 Using manual schema for ${t.name}`, { 
+        manualSchema: inputSchema ? JSON.stringify(inputSchema) : "undefined"
+      });
     }
     const handler = async (args: Record<string, unknown>) => {
       try {
