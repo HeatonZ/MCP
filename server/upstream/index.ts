@@ -117,13 +117,8 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
   }
   
   const result: Record<string, "string"|"number"|"json"|"boolean"> = {};
-  const required = Array.isArray(jsonSchema.required) ? jsonSchema.required as string[] : [];
-  
-  logInfo("upstream", "Processing schema properties", {
-    propertiesCount: Object.keys(properties).length,
-    requiredFields: required,
-    allProperties: Object.keys(properties)
-  } as Record<string, unknown>);
+  // 注意：required 字段信息目前未使用，但保留以备将来扩展
+  const _required = Array.isArray(jsonSchema.required) ? jsonSchema.required as string[] : [];
   
   for (const [key, prop] of Object.entries(properties)) {
     if (!isRecord(prop)) {
@@ -147,13 +142,7 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
     }
   }
   
-  const resultCount = Object.keys(result).length;
-  logInfo("upstream", "Schema extraction completed", {
-    extractedProperties: resultCount,
-    extractedSchema: result
-  } as Record<string, unknown>);
-  
-  return resultCount > 0 ? result : undefined;
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 // 为已知的上游工具手动定义缺失的schema
@@ -446,24 +435,18 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string): Prom
     const description = t.description ?? "";
     const zodSchema = undefined;
     
-    // 调试日志：记录原始 schema
-    console.log(`🔍 Processing tool ${t.name}`, { 
-      originalInputSchema: t.inputSchema ? JSON.stringify(t.inputSchema) : "undefined"
-    });
-    
     // 从上游工具的inputSchema中提取简化的schema信息，如果为空则尝试使用手动定义的schema
     let inputSchema: Record<string, "string"|"number"|"json"|"boolean"> | undefined = extractSimpleSchema(t.inputSchema);
     
-    // 调试日志：记录提取结果
-    console.log(`🔍 Schema extraction result for ${t.name}`, { 
-      extractedSchema: inputSchema ? JSON.stringify(inputSchema) : "undefined"
-    });
-    
     if (!inputSchema) {
       inputSchema = getManualSchema(t.name);
-      console.log(`🔍 Using manual schema for ${t.name}`, { 
-        manualSchema: inputSchema ? JSON.stringify(inputSchema) : "undefined"
-      });
+      // 只在使用 fallback schema 时记录日志
+      if (inputSchema) {
+        logInfo("upstream", `Using fallback schema for ${t.name}`, { 
+          toolName: t.name,
+          fallbackSchema: Object.keys(inputSchema)
+        } as Record<string, unknown>);
+      }
     }
     const handler = async (args: Record<string, unknown>) => {
       try {
