@@ -432,7 +432,7 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstr
   for (const t of (list?.tools ?? [])) {
     // 检查是否隐藏命名空间前缀
     const hideNamespacePrefix = upstreamConfig?.mapping?.hideNamespacePrefix === true;
-    const name = hideNamespacePrefix ? t.name : `${namespace}.${t.name}`;
+    const name = hideNamespacePrefix ? t.name : `${namespace}_${t.name}`;
     const title = t.title ?? t.name;
     const description = t.description ?? "";
     const zodSchema = undefined;
