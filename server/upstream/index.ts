@@ -356,7 +356,7 @@ export async function initUpstreams(): Promise<void> {
         logWarn("upstream", "unsupported transport", { name: (u as { name?: string }).name ?? "", transport: (u as { transport?: string }).transport ?? "" } as Record<string, unknown>);
         continue;
       }
-      const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns);
+      const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns, u);
       upstreams.set(u.name, { name: u.name, namespace: ns, client: clientLike, transport, tools });
       const toolNames: string[] = [];
       for (const t of tools) toolNames.push(t.name);
@@ -415,7 +415,7 @@ export async function reconnectUpstream(name: string): Promise<boolean> {
     } else {
       return false;
     }
-    const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns);
+    const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns, u);
     upstreams.set(u.name, { name: u.name, namespace: ns, client: clientLike, transport, tools });
     markConnected(u.name);
     setNamespace(u.name, ns);
@@ -426,11 +426,13 @@ export async function reconnectUpstream(name: string): Promise<boolean> {
   }
 }
 
-async function fetchToolsAsSpecs(client: McpClientLike, namespace: string): Promise<ToolSpec[]> {
+async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstreamConfig?: any): Promise<ToolSpec[]> {
   const list = await client.listTools();
   const specs: ToolSpec[] = [];
   for (const t of (list?.tools ?? [])) {
-    const name = `${namespace}/${t.name}`;
+    // 检查是否隐藏命名空间前缀
+    const hideNamespacePrefix = upstreamConfig?.mapping?.hideNamespacePrefix === true;
+    const name = hideNamespacePrefix ? t.name : `${namespace}.${t.name}`;
     const title = t.title ?? t.name;
     const description = t.description ?? "";
     const zodSchema = undefined;
