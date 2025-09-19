@@ -200,6 +200,9 @@ function sdkClientAdapter(c: Client): McpClientLike {
 }
 
 function httpClientAdapter(url: string, headers?: Record<string, string>): McpClientLike {
+  // Session ID 将从服务器获取
+  let sessionId: string | null = null;
+  let initialized = false;
   async function readNdjsonFirstLine(res: Response): Promise<unknown> {
     const body = res.body;
     if (!body) return null;
@@ -258,8 +261,13 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
 
   async function rpc(method: string, params?: Record<string, unknown>): Promise<{ result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } }>{
     const defaultHeaders: Record<string, string> = {
-      Accept: "application/x-ndjson, application/json",
+      Accept: "application/json, text/event-stream",
     };
+    
+    // 只在有 session ID 时才包含它
+    if (sessionId) {
+      defaultHeaders["Mcp-Session-Id"] = sessionId;
+    }
     const merged: Record<string, string> = { ...defaultHeaders, ...(headers ?? {}) };
     const contentType = Object.keys(merged).find(k => k.toLowerCase() === "content-type") ? (merged[Object.keys(merged).find(k => k.toLowerCase() === "content-type") as string] || "") : "";
     if (!contentType) merged["Content-Type"] = "application/json";
@@ -269,6 +277,14 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
     const body = useNdjsonRequest ? JSON.stringify(payload) + "\n" : JSON.stringify(payload);
 
     const res = await fetch(url, { method: "POST", headers: merged, body });
+    
+    // 从响应头中获取 session ID（如果有的话）
+    const responseSessionId = res.headers.get("mcp-session-id");
+    if (responseSessionId && !sessionId) {
+      sessionId = responseSessionId;
+      console.log("Received session ID from server:", sessionId);
+    }
+    
     const respCt = (res.headers.get("Content-Type") || "").toLowerCase();
     if (respCt.includes("application/x-ndjson")) {
       const first = await readNdjsonFirstLine(res);
@@ -281,9 +297,42 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
     const json = await res.json();
     return json as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
   }
+  
+  async function ensureInitialized(): Promise<void> {
+    if (initialized) return;
+    
+    console.log("Initializing MCP session with session ID:", sessionId);
+    
+    // Step 1: Send initialize request
+    const initResult = await rpc("initialize", {
+      protocolVersion: "2025-06-18",
+      capabilities: {},
+      clientInfo: {
+        name: "mcp-proxy",
+        version: "1.0.0"
+      }
+    });
+    
+    if (initResult.error) {
+      throw new Error(`Initialize failed: ${initResult.error.message}`);
+    }
+    
+    console.log("Initialize response:", initResult);
+    
+    // Step 2: Send initialized notification
+    const notifyResult = await rpc("notifications/initialized");
+    
+    console.log("Initialized notification result:", notifyResult);
+    
+    initialized = true;
+  }
+  
   return {
     listTools: async () => {
+      await ensureInitialized();
+      console.log("Calling tools/list for", url, "with session ID:", sessionId);
       const r = await rpc("tools/list");
+      console.log("Response from tools/list:", r);
       if (r.error) throw new Error(r.error.message);
       return asToolsListResult(r.result);
     },
@@ -335,7 +384,11 @@ function isWs(u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer
 export async function initUpstreams(): Promise<void> {
   const cfg = await ensureConfig();
   const list = cfg.upstreams?.filter(u => u.enabled !== false) ?? [];
-  if (!list.length) return;
+  logInfo("upstream", "initUpstreams called", { upstreamCount: list.length } as Record<string, unknown>);
+  if (!list.length) {
+    logInfo("upstream", "no upstreams configured");
+    return;
+  }
   for (const u of list) {
     initUpstreamMetrics(u.name, u.transport);
     try {
@@ -365,6 +418,7 @@ export async function initUpstreams(): Promise<void> {
       setNamespace(u.name, ns);
       setCounts(u.name, { toolCount: tools.length });
     } catch (e) {
+      console.log("Upstream connection failed for", u.name, ":", e);
       logError("upstream", "connect failed", { name: u.name, error: String(e) } as Record<string, unknown>);
       markDisconnected(u.name, String(e));
       
@@ -375,6 +429,19 @@ export async function initUpstreams(): Promise<void> {
       }
     }
   }
+  
+  // 添加启动总结日志
+  const summary = {};
+  for (const u of list) {
+    const inst = upstreams.get(u.name);
+    if (inst) {
+      summary[u.name] = { status: 'connected', tools: inst.tools.length };
+    } else {
+      // 注意: 这里简化了错误消息; 可以从 metrics 获取实际错误
+      summary[u.name] = { status: 'failed', error: 'Connection failed' };
+    }
+  }
+  logInfo("upstream", "startup summary", { summary });
 }
 
 async function scheduleReconnect(upstreamName: string): Promise<void> {

@@ -25,12 +25,21 @@ export async function getAllTools(): Promise<ToolSpec[]> {
 }
 
 export async function initPlugins() {
+    console.log("initPlugins: Starting plugin initialization");
     await pluginManager.initAll();
     // 初始化上游连接
+    console.log("initPlugins: Calling initUpstreams");
     await initUpstreams();
+    console.log("initPlugins: initUpstreams completed");
     // 初始化上游并把上游工具注册为动态插件
     const upstreamPlugin = await listUpstreamToolsAsPlugin();
-    if (upstreamPlugin) pluginManager.registerDynamic(upstreamPlugin);
+    if (upstreamPlugin) {
+        console.log("initPlugins: Registering upstream plugin with", upstreamPlugin.getTools().length, "tools");
+        pluginManager.registerDynamic(upstreamPlugin);
+    } else {
+        console.log("initPlugins: No upstream plugin to register");
+    }
+    console.log("initPlugins: Plugin initialization completed");
 }
 
 export async function disposePlugins() {
