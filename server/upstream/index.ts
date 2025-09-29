@@ -180,7 +180,7 @@ function getManualSchema(toolName: string): SimpleSchemaExtraction | undefined {
         "nodeId": "string",
         "depth": "number"
       },
-      required: ["fileKey"]
+      required: []
     },
     "download_figma_images": {
       properties: {
