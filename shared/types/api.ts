@@ -1,10 +1,10 @@
-import type { SimpleSchemaType } from "./tool.ts";
+import type { ApiToolInputSchema } from "./types.ts";
 
 export type ApiToolMeta = {
 	name: string;
 	title?: string;
 	description?: string;
-	inputSchema?: Record<string, SimpleSchemaType> | null;
+	inputSchema?: ApiToolInputSchema;
 };
 
 export type ApiToolsList = { tools: ApiToolMeta[] };

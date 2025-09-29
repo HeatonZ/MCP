@@ -26,5 +26,8 @@
       "namespace": "context7",
       "enabled": true
     }
-  ]
+  ],
+  "upstreamRefresh": {
+    "intervalMinutes": 1440
+  }
 } 

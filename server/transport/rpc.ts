@@ -71,28 +71,31 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
 
     if (req.method === "tools/list") {
       const items = (await getAllTools()).map((t) => {
-        // 将简化的 inputSchema 转换为标准 JSON Schema 格式
-        const inputSchema = t.inputSchema ?? {};
+        const schema = t.inputSchema;
         const properties: Record<string, { type: string }> = {};
-        const required: string[] = [];
-        
-        for (const [key, type] of Object.entries(inputSchema)) {
-          properties[key] = {
-            type: type === "json" ? "object" : type
-          };
-          required.push(key);
+        const required = schema?.required ?? [];
+
+        if (schema) {
+          for (const [key, type] of Object.entries(schema.properties)) {
+            properties[key] = {
+              type: type === "json" ? "object" : type
+            };
+          }
         }
-        
-        const jsonSchema = {
-          type: "object",
-          properties,
-          ...(required.length > 0 ? { required } : {})
-        };
-        
+
+        const hasProperties = Object.keys(properties).length > 0;
+        const jsonSchema = hasProperties
+          ? {
+              type: "object",
+              properties,
+              ...(required.length > 0 ? { required } : {})
+            }
+          : undefined;
+
         return {
           name: t.name,
           description: t.description,
-          inputSchema: jsonSchema
+          ...(jsonSchema ? { inputSchema: jsonSchema } : {})
         };
       });
       return { jsonrpc: "2.0", id, result: { tools: items } };

@@ -75,11 +75,22 @@ export async function createMcpServer(): Promise<McpServer> {
   );
 
   for (const t of await getAllTools()) {
+    const inputSchema = t.inputSchema
+      ? {
+          type: "object",
+          properties: Object.fromEntries(
+            Object.entries(t.inputSchema.properties).map(([key, type]) => [key, { type: type === "json" ? "object" : type }])
+          ),
+          ...(t.inputSchema.required && t.inputSchema.required.length ? { required: t.inputSchema.required } : {})
+        }
+      : undefined;
     server.registerTool(
       t.name,
       t.zodSchema
         ? { title: t.title, description: t.description, inputSchema: t.zodSchema }
-        : { title: t.title, description: t.description },
+        : inputSchema
+          ? { title: t.title, description: t.description, inputSchema }
+          : { title: t.title, description: t.description },
       ((args: Record<string, unknown>) => t.handler(args).then((r) => ({ content: [{ type: "text", text: r.text }], isError: r.isError }))) as unknown as { (args: Record<string, unknown>): Promise<{ [x: string]: unknown; content: { [x: string]: unknown; type: "text"; text: string; }[]; isError?: boolean }>; }
     );
   }

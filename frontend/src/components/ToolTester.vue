@@ -22,11 +22,11 @@
         
         <p v-if="currentTool.description">{{ currentTool.description }}</p>
         
-        <el-form v-if="currentTool.inputSchema" :model="toolArgs" label-width="120px">
+        <el-form v-if="currentTool.inputSchema" :model="toolArgs" label-width="140px">
           <el-form-item 
-            v-for="(type, key) in currentTool.inputSchema" 
+            v-for="(type, key) in currentTool.inputSchema.properties" 
             :key="key" 
-            :label="key"
+            :label="`${key}${currentTool.inputSchema.required?.includes(key) ? ' *' : ''}`"
           >
             <el-input-number 
               v-if="type === 'number'" 
@@ -75,9 +75,14 @@ const currentTool = computed(() =>
 const onToolSelect = () => {
   toolArgs.value = {};
   const tool = currentTool.value;
-  if (tool?.inputSchema) {
-    for (const [key, type] of Object.entries(tool.inputSchema)) {
+  if (tool?.inputSchema?.properties) {
+    for (const [key, type] of Object.entries(tool.inputSchema.properties)) {
       toolArgs.value[key] = type === 'number' ? 0 : '';
+    }
+    for (const key of tool.inputSchema.required ?? []) {
+      if (!(key in toolArgs.value)) {
+        toolArgs.value[key] = '';
+      }
     }
   }
 };
@@ -86,8 +91,8 @@ const runTest = () => {
   if (!currentTool.value) return;
   
   const args: Record<string, unknown> = {};
-  if (currentTool.value.inputSchema) {
-    for (const [key, type] of Object.entries(currentTool.value.inputSchema)) {
+  if (currentTool.value.inputSchema?.properties) {
+    for (const [key, type] of Object.entries(currentTool.value.inputSchema.properties)) {
       if (type === 'json') {
         try {
           args[key] = toolArgs.value[key] ? JSON.parse(toolArgs.value[key]) : null;

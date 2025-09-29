@@ -1,4 +1,4 @@
-import { getConfigSync, loadConfig } from "@server/config.ts";
+import { getConfigSync, loadConfig, onConfigChange } from "@server/config.ts";
 import type { AppConfig, UpstreamConfig as _UpstreamConfig, UpstreamConfigStdio, UpstreamConfigHttp, UpstreamConfigSse, UpstreamConfigWs } from "@shared/types/system.ts";
 import { logError, logInfo, logWarn } from "@server/logger.ts";
 import type { ToolSpec } from "@shared/types/tool.ts";
@@ -17,6 +17,7 @@ type UpstreamInstance = {
 };
 
 const upstreams: Map<string, UpstreamInstance> = new Map();
+let refreshTimer: number | null = null;
 
 type JsonValue = null | string | number | boolean | JsonValue[] | { [k: string]: JsonValue };
 
@@ -100,7 +101,12 @@ function asGetPromptResult(v: unknown): GetPromptResult {
   return { messages: [] };
 }
 
-function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"number"|"json"|"boolean"> | undefined {
+type SimpleSchemaExtraction = {
+  properties: Record<string, "string"|"number"|"json"|"boolean">;
+  required: string[];
+};
+
+function extractSimpleSchema(jsonSchema: unknown): SimpleSchemaExtraction | undefined {
   if (!isRecord(jsonSchema)) {
     logWarn("upstream", "Schema is not a record", { schema: typeof jsonSchema } as Record<string, unknown>);
     return undefined;
@@ -117,8 +123,8 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
   }
   
   const result: Record<string, "string"|"number"|"json"|"boolean"> = {};
-  // 注意：required 字段信息目前未使用，但保留以备将来扩展
-  const _required = Array.isArray(jsonSchema.required) ? jsonSchema.required as string[] : [];
+  const rawRequired = Array.isArray(jsonSchema.required) ? (jsonSchema.required as string[]) : [];
+  const required: string[] = [];
   
   for (const [key, prop] of Object.entries(properties)) {
     if (!isRecord(prop)) {
@@ -140,50 +146,133 @@ function extractSimpleSchema(jsonSchema: unknown): Record<string, "string"|"numb
       // 默认作为字符串处理
       result[key] = "string";
     }
+
+    if (rawRequired.includes(key)) {
+      required.push(key);
+    }
   }
   
-  return Object.keys(result).length > 0 ? result : undefined;
+  return Object.keys(result).length > 0 ? { properties: result, required } : undefined;
 }
 
 // 为已知的上游工具手动定义缺失的schema
 // 这些定义基于在线context7服务的实际schema
-function getManualSchema(toolName: string): Record<string, "string"|"number"|"json"|"boolean"> | undefined {
-  const manualSchemas: Record<string, Record<string, "string"|"number"|"json"|"boolean">> = {
+function getManualSchema(toolName: string): SimpleSchemaExtraction | undefined {
+  const manualSchemas: Record<string, SimpleSchemaExtraction> = {
     "resolve-library-id": {
-      "libraryName": "string"  // 必需参数
+      properties: {
+        "libraryName": "string"
+      },
+      required: ["libraryName"]
     },
     "get-library-docs": {
-      "context7CompatibleLibraryID": "string",  // 必需参数
-      "topic": "string",                        // 可选参数
-      "tokens": "number"                        // 可选参数
+      properties: {
+        "context7CompatibleLibraryID": "string",
+        "topic": "string",
+        "tokens": "number"
+      },
+      required: ["context7CompatibleLibraryID"]
     },
     // Figma工具的fallback schema（当MCP传输中schema丢失时使用）
     "get_figma_data": {
-      "fileKey": "string",                      // 必需参数：Figma文件的key
-      "nodeId": "string",                       // 可选参数：特定节点的ID
-      "depth": "number"                         // 可选参数：遍历深度
+      properties: {
+        "fileKey": "string",
+        "nodeId": "string",
+        "depth": "number"
+      },
+      required: ["fileKey"]
     },
     "download_figma_images": {
-      "fileKey": "string",                      // 必需参数：Figma文件的key
-      "nodes": "json",                          // 必需参数：要下载的节点数组
-      "localPath": "string",                    // 必需参数：本地保存路径
-      "pngScale": "number"                      // 可选参数：PNG缩放比例
+      properties: {
+        "fileKey": "string",
+        "nodes": "json",
+        "localPath": "string",
+        "pngScale": "number"
+      },
+      required: ["fileKey", "nodes", "localPath"]
     },
     // sequential-thinking工具的fallback schema（当MCP传输中schema丢失时使用）
     "sequentialthinking": {
-      "thought": "string",                      // 当前思考步骤（必需）
-      "nextThoughtNeeded": "boolean",           // 是否需要更多思考（必需）
-      "thoughtNumber": "number",                // 当前思考编号（必需）
-      "totalThoughts": "number",                // 预估总思考数（必需）
-      "isRevision": "boolean",                  // 是否为修正思考（可选）
-      "revisesThought": "number",               // 修正的思考编号（可选）
-      "branchFromThought": "number",            // 分支起始思考编号（可选）
-      "branchId": "string",                     // 分支标识符（可选）
-      "needsMoreThoughts": "boolean"            // 是否需要更多思考（可选）
+      properties: {
+        "thought": "string",
+        "nextThoughtNeeded": "boolean",
+        "thoughtNumber": "number",
+        "totalThoughts": "number",
+        "isRevision": "boolean",
+        "revisesThought": "number",
+        "branchFromThought": "number",
+        "branchId": "string",
+        "needsMoreThoughts": "boolean"
+      },
+      required: ["thought", "nextThoughtNeeded", "thoughtNumber", "totalThoughts"]
     }
   };
   
-  return manualSchemas[toolName];
+  const manual = manualSchemas[toolName];
+  if (manual) {
+    markFallbackUsage(toolName);
+  }
+  return manual;
+}
+
+const fallbackUsage = new Map<string, { count: number; lastUsed?: number }>();
+
+function markFallbackUsage(toolName: string) {
+  const current = fallbackUsage.get(toolName) ?? { count: 0, lastUsed: undefined };
+  current.count += 1;
+  current.lastUsed = Date.now();
+  fallbackUsage.set(toolName, current);
+}
+
+export function getFallbackUsageSummary(): Record<string, { count: number; lastUsed?: number }> {
+  const out: Record<string, { count: number; lastUsed?: number }> = {};
+  for (const [name, stats] of fallbackUsage.entries()) {
+    out[name] = { count: stats.count, lastUsed: stats.lastUsed };
+  }
+  return out;
+}
+
+function scheduleRefreshAll(intervalMs: number) {
+  if (refreshTimer) clearInterval(refreshTimer);
+  if (intervalMs <= 0) {
+    refreshTimer = null;
+    return;
+  }
+  const runRefresh = async () => {
+    try {
+      const cfg = await ensureConfig();
+      const list = cfg.upstreams?.filter(u => u.enabled !== false) ?? [];
+      for (const u of list) {
+        await reconnectUpstream(u.name);
+      }
+    } catch (error) {
+      logWarn("upstream", "scheduled refresh failed", { error: String(error) } as Record<string, unknown>);
+    }
+  };
+  runRefresh();
+  refreshTimer = setInterval(runRefresh, intervalMs) as unknown as number;
+}
+
+type RefreshConfig = { intervalMinutes?: number };
+
+function resolveRefreshInterval(cfg: AppConfig): number {
+  const refreshConfig = (cfg as unknown as { upstreamRefresh?: RefreshConfig }).upstreamRefresh;
+  if (refreshConfig && typeof refreshConfig.intervalMinutes === "number") {
+    return refreshConfig.intervalMinutes;
+  }
+  const legacy = Number((cfg as Record<string, unknown>).upstreamRefreshMinutes ?? 0);
+  return Number.isFinite(legacy) ? legacy : 0;
+}
+
+function setupRefreshScheduling(cfg: AppConfig) {
+  const intervalMinutes = resolveRefreshInterval(cfg);
+  const intervalMs = Number.isFinite(intervalMinutes) && intervalMinutes > 0 ? intervalMinutes * 60 * 1000 : 0;
+  scheduleRefreshAll(intervalMs);
+  onConfigChange((nextCfg) => {
+    const nextMinutes = resolveRefreshInterval(nextCfg);
+    const nextMs = Number.isFinite(nextMinutes) && nextMinutes > 0 ? nextMinutes * 60 * 1000 : 0;
+    scheduleRefreshAll(nextMs);
+  });
 }
 
 
@@ -383,6 +472,7 @@ function isWs(u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer
 
 export async function initUpstreams(): Promise<void> {
   const cfg = await ensureConfig();
+  setupRefreshScheduling(cfg);
   const list = cfg.upstreams?.filter(u => u.enabled !== false) ?? [];
   logInfo("upstream", "initUpstreams called", { upstreamCount: list.length } as Record<string, unknown>);
   if (!list.length) {
@@ -505,19 +595,30 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstr
     const zodSchema = undefined;
     
     // 从上游工具的inputSchema中提取简化的schema信息，如果为空则尝试使用手动定义的schema
-    let inputSchema: Record<string, "string"|"number"|"json"|"boolean"> | undefined = extractSimpleSchema(t.inputSchema);
+    let extracted = extractSimpleSchema(t.inputSchema);
+    let inputSchema = extracted ? { properties: extracted.properties, required: extracted.required, source: "upstream" as const } : undefined;
     
     if (!inputSchema) {
-      inputSchema = getManualSchema(t.name);
+      const manual = getManualSchema(t.name);
+      if (manual) {
+        inputSchema = { properties: manual.properties, required: manual.required, source: "manual" };
+      }
       // 只在使用 fallback schema 时记录日志
       if (inputSchema) {
         logInfo("upstream", `Using fallback schema for ${t.name}`, { 
           toolName: t.name,
-          fallbackSchema: Object.keys(inputSchema)
+          fallbackSchema: Object.keys(inputSchema.properties)
         } as Record<string, unknown>);
       }
     }
+    const requiredArgs = inputSchema?.required ?? [];
     const handler = async (args: Record<string, unknown>) => {
+      if (requiredArgs.length) {
+        const missing = requiredArgs.filter((key) => args[key] === undefined || args[key] === null || args[key] === "");
+        if (missing.length) {
+          return { text: `缺少必需参数: ${missing.join(", ")}`, isError: true };
+        }
+      }
       try {
         const res = await client.callTool({ name: t.name, arguments: args });
         const textParts: string[] = [];

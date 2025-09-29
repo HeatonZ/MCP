@@ -8,13 +8,19 @@ export type AppConfig = {
 	};
 };
 
-export type SimpleSchemaType = "string" | "number" | "json";
+export type SimpleSchemaType = "string" | "number" | "json" | "boolean";
+
+export type ApiToolInputSchema = {
+	properties: Record<string, SimpleSchemaType>;
+	required?: string[];
+	source?: "upstream" | "manual";
+} | null;
 
 export type ApiToolMeta = {
 	name: string;
 	title?: string;
 	description?: string;
-	inputSchema?: Record<string, SimpleSchemaType> | null;
+	inputSchema?: ApiToolInputSchema;
 };
 
 export type ApiToolsList = { tools: ApiToolMeta[] };

@@ -6,7 +6,7 @@ import { createSseEndpoints } from "@server/transport/http_sse.ts";
 import { handleHttpRpc } from "@server/transport/http_stream.ts";
 import { handleStreamableHttp, handleStreamableHttpGet } from "@server/transport/streamable_http.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
-import { reconnectUpstream } from "@server/upstream/index.ts";
+import { getFallbackUsageSummary, reconnectUpstream } from "@server/upstream/index.ts";
 import { createLogStream, getSnapshot, logError, logInfo } from "@server/logger.ts";
 import { safeResolve, listFilesRecursive } from "@server/security/paths.ts";
 import { requireAuth, handleLogin, handleLogout, getAuthStatus } from "@server/auth.ts";
@@ -233,6 +233,11 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
     if (!name) return new Response(JSON.stringify({ ok: false, error: "missing name" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
     const ok = await reconnectUpstream(name);
     return new Response(JSON.stringify({ ok }), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+  }
+
+  if (url.pathname === "/api/upstreams/fallback-usage") {
+    const summary = getFallbackUsageSummary();
+    return new Response(JSON.stringify({ usage: summary }, null, 2), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
   }
 
   // 对于需要认证的API路由，先检查认证状态（除了认证相关的API）
