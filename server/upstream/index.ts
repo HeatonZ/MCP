@@ -605,11 +605,15 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstr
       }
       // 只在使用 fallback schema 时记录日志
       if (inputSchema) {
-        logInfo("upstream", `Using fallback schema for ${t.name}`, { 
+        logInfo("upstream", `Using fallback schema for ${t.name}`, {
           toolName: t.name,
           fallbackSchema: Object.keys(inputSchema.properties)
         } as Record<string, unknown>);
       }
+    }
+
+    if (!inputSchema) {
+      inputSchema = { properties: {}, required: [], source: "manual" };
     }
     const requiredArgs = inputSchema?.required ?? [];
     const handler = async (args: Record<string, unknown>) => {
