@@ -83,8 +83,7 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
           }
         }
 
-        const hasProperties = Object.keys(properties).length > 0;
-        const jsonSchema = hasProperties
+        const jsonSchema = schema
           ? {
               type: "object",
               properties,
