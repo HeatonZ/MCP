@@ -1,12 +1,25 @@
 import { getConfigSync, loadConfig, onConfigChange } from "@server/config.ts";
-import type { AppConfig, UpstreamConfig as _UpstreamConfig, UpstreamConfigStdio, UpstreamConfigHttp, UpstreamConfigSse, UpstreamConfigWs } from "@shared/types/system.ts";
+import type {
+  AppConfig,
+  UpstreamConfig as _UpstreamConfig,
+  UpstreamConfigHttp,
+  UpstreamConfigSse,
+  UpstreamConfigStdio,
+  UpstreamConfigWs,
+} from "@shared/types/system.ts";
 import { logError, logInfo, logWarn } from "@server/logger.ts";
 import type { ToolSpec } from "@shared/types/tool.ts";
 
 // MCP TS SDK client imports
 import { Client } from "npm:@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "npm:@modelcontextprotocol/sdk/client/stdio.js";
-import { initUpstreamMetrics, markConnected, markDisconnected, setCounts, setNamespace } from "@server/upstream/metrics.ts";
+import {
+  initUpstreamMetrics,
+  markConnected,
+  markDisconnected,
+  setCounts,
+  setNamespace,
+} from "@server/upstream/metrics.ts";
 
 type UpstreamInstance = {
   name: string;
@@ -23,7 +36,9 @@ type JsonValue = null | string | number | boolean | JsonValue[] | { [k: string]:
 
 type ToolItem = { name: string; title?: string; description?: string; inputSchema?: unknown };
 type ToolsListResult = { tools: ToolItem[] };
-type ToolCallResult = { content?: Array<{ type?: string; text?: string }> } & Record<string, unknown>;
+type ToolCallResult =
+  & { content?: Array<{ type?: string; text?: string }> }
+  & Record<string, unknown>;
 type ResourceItem = { uri: string; title?: string; mimeType?: string };
 type ResourcesListResult = { resources: ResourceItem[] };
 type ReadResourceResult = { contents: Array<{ uri: string; text?: string; mimeType?: string }> };
@@ -37,11 +52,17 @@ type McpClientLike = {
   listResources?: () => Promise<ResourcesListResult>;
   readResource?: (req: { uri: string }) => Promise<ReadResourceResult>;
   listPrompts?: () => Promise<PromptsListResult>;
-  getPrompt?: (req: { name: string; arguments?: Record<string, unknown> }) => Promise<GetPromptResult>;
+  getPrompt?: (
+    req: { name: string; arguments?: Record<string, unknown> },
+  ) => Promise<GetPromptResult>;
 };
 
-function isRecord(v: unknown): v is Record<string, unknown> { return typeof v === "object" && v !== null && !Array.isArray(v); }
-function asString(v: unknown): string | undefined { return typeof v === "string" ? v : undefined; }
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+function asString(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
 function asToolsListResult(v: unknown): ToolsListResult {
   const tools: ToolItem[] = [];
   if (isRecord(v) && Array.isArray(v.tools)) {
@@ -68,7 +89,11 @@ function asResourcesListResult(v: unknown): ResourcesListResult {
   if (isRecord(v) && Array.isArray(v.resources)) {
     for (const it of v.resources) {
       if (isRecord(it) && typeof it.uri === "string") {
-        resources.push({ uri: it.uri, title: asString(it.title), mimeType: asString((it as Record<string, unknown>).mimeType) });
+        resources.push({
+          uri: it.uri,
+          title: asString(it.title),
+          mimeType: asString((it as Record<string, unknown>).mimeType),
+        });
       }
     }
   }
@@ -79,7 +104,11 @@ function asReadResourceResult(v: unknown): ReadResourceResult {
   if (isRecord(v) && Array.isArray(v.contents)) {
     for (const it of v.contents) {
       if (isRecord(it) && typeof it.uri === "string") {
-        contents.push({ uri: it.uri, text: asString(it.text), mimeType: asString((it as Record<string, unknown>).mimeType) });
+        contents.push({
+          uri: it.uri,
+          text: asString(it.text),
+          mimeType: asString((it as Record<string, unknown>).mimeType),
+        });
       }
     }
   }
@@ -102,36 +131,44 @@ function asGetPromptResult(v: unknown): GetPromptResult {
 }
 
 type SimpleSchemaExtraction = {
-  properties: Record<string, "string"|"number"|"json"|"boolean">;
+  properties: Record<string, "string" | "number" | "json" | "boolean">;
   required: string[];
 };
 
 function extractSimpleSchema(jsonSchema: unknown): SimpleSchemaExtraction | undefined {
   if (!isRecord(jsonSchema)) {
-    logWarn("upstream", "Schema is not a record", { schema: typeof jsonSchema } as Record<string, unknown>);
+    logWarn(
+      "upstream",
+      "Schema is not a record",
+      { schema: typeof jsonSchema } as Record<string, unknown>,
+    );
     return undefined;
   }
-  
+
   const properties = jsonSchema.properties;
   if (!isRecord(properties)) {
-    logWarn("upstream", "Schema has no valid properties", { 
+    logWarn("upstream", "Schema has no valid properties", {
       hasProperties: !!jsonSchema.properties,
       propertiesType: typeof jsonSchema.properties,
-      schemaKeys: Object.keys(jsonSchema)
+      schemaKeys: Object.keys(jsonSchema),
     } as Record<string, unknown>);
     return undefined;
   }
-  
-  const result: Record<string, "string"|"number"|"json"|"boolean"> = {};
+
+  const result: Record<string, "string" | "number" | "json" | "boolean"> = {};
   const rawRequired = Array.isArray(jsonSchema.required) ? (jsonSchema.required as string[]) : [];
   const required: string[] = [];
-  
+
   for (const [key, prop] of Object.entries(properties)) {
     if (!isRecord(prop)) {
-      logWarn("upstream", `Property ${key} is not a record`, { propertyType: typeof prop } as Record<string, unknown>);
+      logWarn(
+        "upstream",
+        `Property ${key} is not a record`,
+        { propertyType: typeof prop } as Record<string, unknown>,
+      );
       continue;
     }
-    
+
     const type = prop.type;
     if (type === "string") {
       result[key] = "string";
@@ -142,7 +179,11 @@ function extractSimpleSchema(jsonSchema: unknown): SimpleSchemaExtraction | unde
     } else if (type === "object" || type === "array") {
       result[key] = "json";
     } else {
-      logWarn("upstream", `Unknown property type for ${key}`, { type, defaultingTo: "string" } as Record<string, unknown>);
+      logWarn(
+        "upstream",
+        `Unknown property type for ${key}`,
+        { type, defaultingTo: "string" } as Record<string, unknown>,
+      );
       // 默认作为字符串处理
       result[key] = "string";
     }
@@ -151,68 +192,13 @@ function extractSimpleSchema(jsonSchema: unknown): SimpleSchemaExtraction | unde
       required.push(key);
     }
   }
-  
+
   return Object.keys(result).length > 0 ? { properties: result, required } : undefined;
 }
 
-// 为已知的上游工具手动定义缺失的schema
-// 这些定义基于在线context7服务的实际schema
+// 当前所有已配置的上游都提供完整的schema，不再需要手动fallback定义
 function getManualSchema(toolName: string): SimpleSchemaExtraction | undefined {
-  const manualSchemas: Record<string, SimpleSchemaExtraction> = {
-    "resolve-library-id": {
-      properties: {
-        "libraryName": "string"
-      },
-      required: ["libraryName"]
-    },
-    "get-library-docs": {
-      properties: {
-        "context7CompatibleLibraryID": "string",
-        "topic": "string",
-        "tokens": "number"
-      },
-      required: ["context7CompatibleLibraryID"]
-    },
-    // Figma工具的fallback schema（当MCP传输中schema丢失时使用）
-    "get_figma_data": {
-      properties: {
-        "fileKey": "string",
-        "nodeId": "string",
-        "depth": "number"
-      },
-      required: []
-    },
-    "download_figma_images": {
-      properties: {
-        "fileKey": "string",
-        "nodes": "json",
-        "localPath": "string",
-        "pngScale": "number"
-      },
-      required: ["fileKey", "nodes", "localPath"]
-    },
-    // sequential-thinking工具的fallback schema（当MCP传输中schema丢失时使用）
-    "sequentialthinking": {
-      properties: {
-        "thought": "string",
-        "nextThoughtNeeded": "boolean",
-        "thoughtNumber": "number",
-        "totalThoughts": "number",
-        "isRevision": "boolean",
-        "revisesThought": "number",
-        "branchFromThought": "number",
-        "branchId": "string",
-        "needsMoreThoughts": "boolean"
-      },
-      required: ["thought", "nextThoughtNeeded", "thoughtNumber", "totalThoughts"]
-    }
-  };
-  
-  const manual = manualSchemas[toolName];
-  if (manual) {
-    markFallbackUsage(toolName);
-  }
-  return manual;
+  return undefined;
 }
 
 const fallbackUsage = new Map<string, { count: number; lastUsed?: number }>();
@@ -241,12 +227,16 @@ function scheduleRefreshAll(intervalMs: number) {
   const runRefresh = async () => {
     try {
       const cfg = await ensureConfig();
-      const list = cfg.upstreams?.filter(u => u.enabled !== false) ?? [];
+      const list = cfg.upstreams?.filter((u) => u.enabled !== false) ?? [];
       for (const u of list) {
         await reconnectUpstream(u.name);
       }
     } catch (error) {
-      logWarn("upstream", "scheduled refresh failed", { error: String(error) } as Record<string, unknown>);
+      logWarn(
+        "upstream",
+        "scheduled refresh failed",
+        { error: String(error) } as Record<string, unknown>,
+      );
     }
   };
   runRefresh();
@@ -266,7 +256,9 @@ function resolveRefreshInterval(cfg: AppConfig): number {
 
 function setupRefreshScheduling(cfg: AppConfig) {
   const intervalMinutes = resolveRefreshInterval(cfg);
-  const intervalMs = Number.isFinite(intervalMinutes) && intervalMinutes > 0 ? intervalMinutes * 60 * 1000 : 0;
+  const intervalMs = Number.isFinite(intervalMinutes) && intervalMinutes > 0
+    ? intervalMinutes * 60 * 1000
+    : 0;
   scheduleRefreshAll(intervalMs);
   onConfigChange((nextCfg) => {
     const nextMinutes = resolveRefreshInterval(nextCfg);
@@ -275,16 +267,31 @@ function setupRefreshScheduling(cfg: AppConfig) {
   });
 }
 
-
-
 function sdkClientAdapter(c: Client): McpClientLike {
   return {
     listTools: async () => asToolsListResult(await (c.listTools() as unknown as Promise<unknown>)),
     callTool: async (r) => asToolCallResult(await (c.callTool(r) as unknown as Promise<unknown>)),
-    listResources: async () => asResourcesListResult(await ((c as unknown as { listResources: () => Promise<unknown> }).listResources?.() ?? Promise.resolve({ resources: [] }))),
-    readResource: async (r) => asReadResourceResult(await ((c as unknown as { readResource: (r: unknown) => Promise<unknown> }).readResource?.(r) ?? Promise.resolve({ contents: [] }))),
-    listPrompts: async () => asPromptsListResult(await ((c as unknown as { listPrompts: () => Promise<unknown> }).listPrompts?.() ?? Promise.resolve({ prompts: [] }))),
-    getPrompt: async (r) => asGetPromptResult(await ((c as unknown as { getPrompt: (r: unknown) => Promise<unknown> }).getPrompt?.(r) ?? Promise.resolve({ messages: [] }))),
+    listResources: async () =>
+      asResourcesListResult(
+        await ((c as unknown as { listResources: () => Promise<unknown> }).listResources?.() ??
+          Promise.resolve({ resources: [] })),
+      ),
+    readResource: async (r) =>
+      asReadResourceResult(
+        await ((c as unknown as { readResource: (r: unknown) => Promise<unknown> }).readResource?.(
+          r,
+        ) ?? Promise.resolve({ contents: [] })),
+      ),
+    listPrompts: async () =>
+      asPromptsListResult(
+        await ((c as unknown as { listPrompts: () => Promise<unknown> }).listPrompts?.() ??
+          Promise.resolve({ prompts: [] })),
+      ),
+    getPrompt: async (r) =>
+      asGetPromptResult(
+        await ((c as unknown as { getPrompt: (r: unknown) => Promise<unknown> }).getPrompt?.(r) ??
+          Promise.resolve({ messages: [] })),
+      ),
   };
 }
 
@@ -307,12 +314,22 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
         const line = buffer.slice(0, lf).replace(/\r$/, "").trim();
         buffer = buffer.slice(lf + 1);
         if (line) {
-          try { return JSON.parse(line); } catch { return line; }
+          try {
+            return JSON.parse(line);
+          } catch {
+            return line;
+          }
         }
       }
     }
     const last = buffer.trim();
-    if (last) { try { return JSON.parse(last); } catch { return last; } }
+    if (last) {
+      try {
+        return JSON.parse(last);
+      } catch {
+        return last;
+      }
+    }
     return null;
   }
 
@@ -325,15 +342,15 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
       const { value, done } = await reader.read();
       if (done) break;
       buffer += value ?? "";
-      
+
       // Parse SSE format: event: message\ndata: {...}\n\n
       // 寻找完整的SSE消息块
-      const messageStart = buffer.indexOf('event: message');
+      const messageStart = buffer.indexOf("event: message");
       if (messageStart >= 0) {
-        const dataStart = buffer.indexOf('data: ', messageStart);
+        const dataStart = buffer.indexOf("data: ", messageStart);
         if (dataStart >= 0) {
           const dataContent = buffer.substring(dataStart + 6);
-          const messageEnd = dataContent.indexOf('\n\n');
+          const messageEnd = dataContent.indexOf("\n\n");
           if (messageEnd >= 0) {
             const jsonData = dataContent.substring(0, messageEnd).trim();
             try {
@@ -348,74 +365,91 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
     return null;
   }
 
-  async function rpc(method: string, params?: Record<string, unknown>): Promise<{ result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } }>{
+  async function rpc(
+    method: string,
+    params?: Record<string, unknown>,
+  ): Promise<{ result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } }> {
     const defaultHeaders: Record<string, string> = {
       Accept: "application/json, text/event-stream",
     };
-    
+
     // 只在有 session ID 时才包含它
     if (sessionId) {
       defaultHeaders["Mcp-Session-Id"] = sessionId;
     }
     const merged: Record<string, string> = { ...defaultHeaders, ...(headers ?? {}) };
-    const contentType = Object.keys(merged).find(k => k.toLowerCase() === "content-type") ? (merged[Object.keys(merged).find(k => k.toLowerCase() === "content-type") as string] || "") : "";
+    const contentType = Object.keys(merged).find((k) => k.toLowerCase() === "content-type")
+      ? (merged[Object.keys(merged).find((k) => k.toLowerCase() === "content-type") as string] ||
+        "")
+      : "";
     if (!contentType) merged["Content-Type"] = "application/json";
 
     const payload = { jsonrpc: "2.0", id: 1, method, params } as Record<string, unknown>;
-    const useNdjsonRequest = (merged["Content-Type"] || merged[Object.keys(merged).find(k => k.toLowerCase() === "content-type") as string] || "").toLowerCase().includes("application/x-ndjson");
+    const useNdjsonRequest = (merged["Content-Type"] || merged[
+      Object.keys(merged).find((k) => k.toLowerCase() === "content-type") as string
+    ] || "").toLowerCase().includes("application/x-ndjson");
     const body = useNdjsonRequest ? JSON.stringify(payload) + "\n" : JSON.stringify(payload);
 
     const res = await fetch(url, { method: "POST", headers: merged, body });
-    
+
     // 从响应头中获取 session ID（如果有的话）
     const responseSessionId = res.headers.get("mcp-session-id");
     if (responseSessionId && !sessionId) {
       sessionId = responseSessionId;
       console.log("Received session ID from server:", sessionId);
     }
-    
+
     const respCt = (res.headers.get("Content-Type") || "").toLowerCase();
     if (respCt.includes("application/x-ndjson")) {
       const first = await readNdjsonFirstLine(res);
-      return (first ?? {}) as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
+      return (first ?? {}) as {
+        result?: JsonValue;
+        error?: { code: number; message: string; data?: JsonValue };
+      };
     }
     if (respCt.includes("text/event-stream")) {
       const first = await readSseFirstMessage(res);
-      return (first ?? {}) as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
+      return (first ?? {}) as {
+        result?: JsonValue;
+        error?: { code: number; message: string; data?: JsonValue };
+      };
     }
     const json = await res.json();
-    return json as { result?: JsonValue; error?: { code: number; message: string; data?: JsonValue } };
+    return json as {
+      result?: JsonValue;
+      error?: { code: number; message: string; data?: JsonValue };
+    };
   }
-  
+
   async function ensureInitialized(): Promise<void> {
     if (initialized) return;
-    
+
     console.log("Initializing MCP session with session ID:", sessionId);
-    
+
     // Step 1: Send initialize request
     const initResult = await rpc("initialize", {
       protocolVersion: "2025-06-18",
       capabilities: {},
       clientInfo: {
         name: "mcp-proxy",
-        version: "1.0.0"
-      }
+        version: "1.0.0",
+      },
     });
-    
+
     if (initResult.error) {
       throw new Error(`Initialize failed: ${initResult.error.message}`);
     }
-    
+
     console.log("Initialize response:", initResult);
-    
+
     // Step 2: Send initialized notification
     const notifyResult = await rpc("notifications/initialized");
-    
+
     console.log("Initialized notification result:", notifyResult);
-    
+
     initialized = true;
   }
-  
+
   return {
     listTools: async () => {
       await ensureInitialized();
@@ -457,24 +491,36 @@ async function ensureConfig(): Promise<AppConfig> {
   return getConfigSync() ?? await loadConfig();
 }
 
-function isStdio(u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never): u is UpstreamConfigStdio {
+function isStdio(
+  u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never,
+): u is UpstreamConfigStdio {
   return (u as { transport: string }).transport === "stdio";
 }
-function isHttp(u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never): u is UpstreamConfigHttp {
+function isHttp(
+  u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never,
+): u is UpstreamConfigHttp {
   return (u as { transport: string }).transport === "http";
 }
-function isSse(u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never): u is UpstreamConfigSse {
+function isSse(
+  u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never,
+): u is UpstreamConfigSse {
   return (u as { transport: string }).transport === "sse";
 }
-function isWs(u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never): u is UpstreamConfigWs {
+function isWs(
+  u: AppConfig["upstreams"] extends infer T ? (T extends Array<infer U> ? U : never) : never,
+): u is UpstreamConfigWs {
   return (u as { transport: string }).transport === "ws";
 }
 
 export async function initUpstreams(): Promise<void> {
   const cfg = await ensureConfig();
   setupRefreshScheduling(cfg);
-  const list = cfg.upstreams?.filter(u => u.enabled !== false) ?? [];
-  logInfo("upstream", "initUpstreams called", { upstreamCount: list.length } as Record<string, unknown>);
+  const list = cfg.upstreams?.filter((u) => u.enabled !== false) ?? [];
+  logInfo(
+    "upstream",
+    "initUpstreams called",
+    { upstreamCount: list.length } as Record<string, unknown>,
+  );
   if (!list.length) {
     logInfo("upstream", "no upstreams configured");
     return;
@@ -486,7 +532,12 @@ export async function initUpstreams(): Promise<void> {
       let clientLike: McpClientLike;
       let transport: StdioClientTransport | undefined = undefined;
       if (isStdio(u)) {
-        const t = new StdioClientTransport({ command: u.command, args: u.args ?? [], cwd: u.cwd, env: u.env });
+        const t = new StdioClientTransport({
+          command: u.command,
+          args: u.args ?? [],
+          cwd: u.cwd,
+          env: u.env,
+        });
         const client = new Client({ name: `proxy-${u.name}`, version: cfg.version });
         await client.connect(t);
         clientLike = sdkClientAdapter(client);
@@ -496,22 +547,37 @@ export async function initUpstreams(): Promise<void> {
         const headers = u.headers;
         clientLike = httpClientAdapter(httpUrl, headers);
       } else {
-        logWarn("upstream", "unsupported transport", { name: (u as { name?: string }).name ?? "", transport: (u as { transport?: string }).transport ?? "" } as Record<string, unknown>);
+        logWarn(
+          "upstream",
+          "unsupported transport",
+          {
+            name: (u as { name?: string }).name ?? "",
+            transport: (u as { transport?: string }).transport ?? "",
+          } as Record<string, unknown>,
+        );
         continue;
       }
       const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns, u);
       upstreams.set(u.name, { name: u.name, namespace: ns, client: clientLike, transport, tools });
       const toolNames: string[] = [];
       for (const t of tools) toolNames.push(t.name);
-      logInfo("upstream", "connected", { name: u.name, namespace: ns, tools: toolNames } as Record<string, unknown>);
+      logInfo(
+        "upstream",
+        "connected",
+        { name: u.name, namespace: ns, tools: toolNames } as Record<string, unknown>,
+      );
       markConnected(u.name);
       setNamespace(u.name, ns);
       setCounts(u.name, { toolCount: tools.length });
     } catch (e) {
       console.log("Upstream connection failed for", u.name, ":", e);
-      logError("upstream", "connect failed", { name: u.name, error: String(e) } as Record<string, unknown>);
+      logError(
+        "upstream",
+        "connect failed",
+        { name: u.name, error: String(e) } as Record<string, unknown>,
+      );
       markDisconnected(u.name, String(e));
-      
+
       // 如果启用了重连，尝试重连
       const reconnectConfig = u.reconnect ?? { enabled: true };
       if (reconnectConfig.enabled !== false) {
@@ -519,16 +585,16 @@ export async function initUpstreams(): Promise<void> {
       }
     }
   }
-  
+
   // 添加启动总结日志
   const summary = {};
   for (const u of list) {
     const inst = upstreams.get(u.name);
     if (inst) {
-      summary[u.name] = { status: 'connected', tools: inst.tools.length };
+      summary[u.name] = { status: "connected", tools: inst.tools.length };
     } else {
       // 注意: 这里简化了错误消息; 可以从 metrics 获取实际错误
-      summary[u.name] = { status: 'failed', error: 'Connection failed' };
+      summary[u.name] = { status: "failed", error: "Connection failed" };
     }
   }
   logInfo("upstream", "startup summary", { summary });
@@ -537,7 +603,7 @@ export async function initUpstreams(): Promise<void> {
 async function scheduleReconnect(upstreamName: string): Promise<void> {
   const { ConnectionManager } = await import("@server/transport/connection_manager.ts");
   const connectionManager = new ConnectionManager();
-  
+
   await connectionManager.attemptReconnect(upstreamName, async () => {
     return await reconnectUpstream(upstreamName);
   });
@@ -545,13 +611,18 @@ async function scheduleReconnect(upstreamName: string): Promise<void> {
 
 export async function reconnectUpstream(name: string): Promise<boolean> {
   const cfg = await ensureConfig();
-  const u = (cfg.upstreams ?? []).find(x => x.name === name && x.enabled !== false);
+  const u = (cfg.upstreams ?? []).find((x) => x.name === name && x.enabled !== false);
   if (!u) return false;
   try {
     // dispose old
     const old = upstreams.get(name);
-    if (old?.transport && typeof (old.transport as unknown as { close?: () => Promise<void> }).close === "function") {
-      try { await (old.transport as unknown as { close: () => Promise<void> }).close(); } catch { /* ignore */ }
+    if (
+      old?.transport &&
+      typeof (old.transport as unknown as { close?: () => Promise<void> }).close === "function"
+    ) {
+      try {
+        await (old.transport as unknown as { close: () => Promise<void> }).close();
+      } catch { /* ignore */ }
     }
     upstreams.delete(name);
     // re-init single upstream
@@ -560,7 +631,12 @@ export async function reconnectUpstream(name: string): Promise<boolean> {
     let clientLike: McpClientLike;
     let transport: StdioClientTransport | undefined = undefined;
     if (isStdio(u)) {
-      const t = new StdioClientTransport({ command: u.command, args: u.args ?? [], cwd: u.cwd, env: u.env });
+      const t = new StdioClientTransport({
+        command: u.command,
+        args: u.args ?? [],
+        cwd: u.cwd,
+        env: u.env,
+      });
       const client = new Client({ name: `proxy-${u.name}`, version: cfg.version });
       await client.connect(t);
       clientLike = sdkClientAdapter(client);
@@ -583,7 +659,11 @@ export async function reconnectUpstream(name: string): Promise<boolean> {
   }
 }
 
-async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstreamConfig?: any): Promise<ToolSpec[]> {
+async function fetchToolsAsSpecs(
+  client: McpClientLike,
+  namespace: string,
+  upstreamConfig?: any,
+): Promise<ToolSpec[]> {
   const list = await client.listTools();
   const specs: ToolSpec[] = [];
   for (const t of (list?.tools ?? [])) {
@@ -593,21 +673,31 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstr
     const title = t.title ?? t.name;
     const description = t.description ?? "";
     const zodSchema = undefined;
-    
+
     // 从上游工具的inputSchema中提取简化的schema信息，如果为空则尝试使用手动定义的schema
     let extracted = extractSimpleSchema(t.inputSchema);
-    let inputSchema = extracted ? { properties: extracted.properties, required: extracted.required, source: "upstream" as const } : undefined;
-    
+    let inputSchema = extracted
+      ? {
+        properties: extracted.properties,
+        required: extracted.required,
+        source: "upstream" as const,
+      }
+      : undefined;
+
     if (!inputSchema) {
       const manual = getManualSchema(t.name);
       if (manual) {
-        inputSchema = { properties: manual.properties, required: manual.required, source: "manual" };
+        inputSchema = {
+          properties: manual.properties,
+          required: manual.required,
+          source: "manual",
+        };
       }
       // 只在使用 fallback schema 时记录日志
       if (inputSchema) {
         logInfo("upstream", `Using fallback schema for ${t.name}`, {
           toolName: t.name,
-          fallbackSchema: Object.keys(inputSchema.properties)
+          fallbackSchema: Object.keys(inputSchema.properties),
         } as Record<string, unknown>);
       }
     }
@@ -618,7 +708,9 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstr
     const requiredArgs = inputSchema?.required ?? [];
     const handler = async (args: Record<string, unknown>) => {
       if (requiredArgs.length) {
-        const missing = requiredArgs.filter((key) => args[key] === undefined || args[key] === null || args[key] === "");
+        const missing = requiredArgs.filter((key) =>
+          args[key] === undefined || args[key] === null || args[key] === ""
+        );
         if (missing.length) {
           return { text: `缺少必需参数: ${missing.join(", ")}`, isError: true };
         }
@@ -649,7 +741,7 @@ async function fetchToolsAsSpecs(client: McpClientLike, namespace: string, upstr
 export async function listUpstreamToolsAsPlugin() {
   // 延迟初始化；若未连接则返回空
   const cfg = await ensureConfig();
-  const list = cfg.upstreams?.filter(u => u.enabled !== false) ?? [];
+  const list = cfg.upstreams?.filter((u) => u.enabled !== false) ?? [];
   if (!list.length) return null;
   return {
     name: "upstream-tools",
@@ -662,23 +754,40 @@ export async function listUpstreamToolsAsPlugin() {
         all.push(...inst.tools);
       }
       return all;
-    }
+    },
   };
 }
 
-export async function listAggregatedResources(): Promise<Array<{ upstream: string; namespace: string; uri: string; title?: string; mimeType?: string }>> {
-  const out: Array<{ upstream: string; namespace: string; uri: string; title?: string; mimeType?: string }> = [];
+export async function listAggregatedResources(): Promise<
+  Array<{ upstream: string; namespace: string; uri: string; title?: string; mimeType?: string }>
+> {
+  const out: Array<
+    { upstream: string; namespace: string; uri: string; title?: string; mimeType?: string }
+  > = [];
   for (const [name, inst] of upstreams.entries()) {
     try {
       const r = await inst.client.listResources?.();
-      const items = (r && (r as ResourcesListResult).resources ? (r as ResourcesListResult).resources : []);
-      for (const it of items) out.push({ upstream: name, namespace: inst.namespace, uri: it.uri, title: it.title, mimeType: it.mimeType });
+      const items = r && (r as ResourcesListResult).resources
+        ? (r as ResourcesListResult).resources
+        : [];
+      for (const it of items) {
+        out.push({
+          upstream: name,
+          namespace: inst.namespace,
+          uri: it.uri,
+          title: it.title,
+          mimeType: it.mimeType,
+        });
+      }
     } catch (_) { /* ignore one upstream failure */ }
   }
   return out;
 }
 
-export async function readAggregatedResource(upstream: string, uri: string): Promise<{ contents: Array<{ uri: string; text?: string; mimeType?: string }> }>{
+export async function readAggregatedResource(
+  upstream: string,
+  uri: string,
+): Promise<{ contents: Array<{ uri: string; text?: string; mimeType?: string }> }> {
   const inst = upstreams.get(upstream);
   if (!inst) throw new Error("upstream not found");
   const r = await inst.client.readResource?.({ uri });
@@ -686,24 +795,36 @@ export async function readAggregatedResource(upstream: string, uri: string): Pro
   return r as ReadResourceResult;
 }
 
-export async function listAggregatedPrompts(): Promise<Array<{ upstream: string; namespace: string; name: string; description?: string }>> {
-  const out: Array<{ upstream: string; namespace: string; name: string; description?: string }> = [];
+export async function listAggregatedPrompts(): Promise<
+  Array<{ upstream: string; namespace: string; name: string; description?: string }>
+> {
+  const out: Array<{ upstream: string; namespace: string; name: string; description?: string }> =
+    [];
   for (const [name, inst] of upstreams.entries()) {
     try {
       const r = await inst.client.listPrompts?.();
-      const items = (r && (r as PromptsListResult).prompts ? (r as PromptsListResult).prompts : []);
-      for (const it of items) out.push({ upstream: name, namespace: inst.namespace, name: it.name, description: it.description });
+      const items = r && (r as PromptsListResult).prompts ? (r as PromptsListResult).prompts : [];
+      for (const it of items) {
+        out.push({
+          upstream: name,
+          namespace: inst.namespace,
+          name: it.name,
+          description: it.description,
+        });
+      }
     } catch (_) { /* ignore */ }
   }
   return out;
 }
 
-export async function getAggregatedPrompt(upstream: string, name: string, args?: Record<string, unknown>): Promise<{ messages: unknown[] }>{
+export async function getAggregatedPrompt(
+  upstream: string,
+  name: string,
+  args?: Record<string, unknown>,
+): Promise<{ messages: unknown[] }> {
   const inst = upstreams.get(upstream);
   if (!inst) throw new Error("upstream not found");
   const r = await inst.client.getPrompt?.({ name, arguments: args ?? {} });
   if (!r) return { messages: [] };
   return r as GetPromptResult;
 }
-
-
