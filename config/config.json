@@ -25,6 +25,15 @@
       "args": ["-y", "@upstash/context7-mcp"],
       "namespace": "context7",
       "enabled": true
+    },{
+      "name": "figma",
+      "transport": "stdio",
+      "command": "deno",
+      "args": ["run", "-A", "npm:figma-developer-mcp", "--figma-api-key=", "--stdio"],
+      "enabled": false,
+      "mapping": {
+        "hideNamespacePrefix": true
+      }
     }
   ],
   "upstreamRefresh": {
