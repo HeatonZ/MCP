@@ -392,6 +392,18 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
 
     const res = await fetch(url, { method: "POST", headers: merged, body });
 
+    // 检查HTTP状态码
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => "Unknown error");
+      return {
+        error: {
+          code: res.status,
+          message: `HTTP ${res.status}: ${res.statusText}`,
+          data: errorText.substring(0, 500) // 限制错误信息长度
+        }
+      };
+    }
+
     // 从响应头中获取 session ID（如果有的话）
     const responseSessionId = res.headers.get("mcp-session-id");
     if (responseSessionId && !sessionId) {
@@ -414,11 +426,48 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
         error?: { code: number; message: string; data?: JsonValue };
       };
     }
-    const json = await res.json();
-    return json as {
-      result?: JsonValue;
-      error?: { code: number; message: string; data?: JsonValue };
-    };
+    
+    // 检查响应内容类型,确保是JSON
+    if (!respCt.includes("application/json") && !respCt.includes("application/jsonrpc")) {
+      const errorText = await res.text().catch(() => "Unable to read response");
+      return {
+        error: {
+          code: -32700,
+          message: `Invalid response content type: ${respCt || 'unknown'}. Expected JSON but received HTML or other format.`,
+          data: errorText.substring(0, 500)
+        }
+      };
+    }
+
+    // 尝试解析JSON,如果失败则返回错误
+    // 先读取文本,以便在JSON解析失败时仍能获取错误内容
+    let responseText: string;
+    try {
+      responseText = await res.text();
+    } catch (readError) {
+      return {
+        error: {
+          code: -32700,
+          message: `Failed to read response: ${readError instanceof Error ? readError.message : String(readError)}`,
+        }
+      };
+    }
+
+    try {
+      const json = JSON.parse(responseText);
+      return json as {
+        result?: JsonValue;
+        error?: { code: number; message: string; data?: JsonValue };
+      };
+    } catch (jsonError) {
+      return {
+        error: {
+          code: -32700,
+          message: `Failed to parse JSON response: ${jsonError instanceof Error ? jsonError.message : String(jsonError)}`,
+          data: responseText.substring(0, 500)
+        }
+      };
+    }
   }
 
   async function ensureInitialized(): Promise<void> {
