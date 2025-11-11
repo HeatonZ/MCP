@@ -207,8 +207,14 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
     }
 
     if (req.method === "prompts/list") {
-      const items = await listAggregatedPrompts();
-      return { jsonrpc: "2.0", id, result: { prompts: items } };
+      try {
+        const items = await listAggregatedPrompts();
+        return { jsonrpc: "2.0", id, result: { prompts: items } };
+      } catch (e) {
+        logError("mcp-http", "prompts/list failed", { error: String(e) });
+        // 即使出错也返回空列表，避免阻断客户端
+        return { jsonrpc: "2.0", id, result: { prompts: [] } };
+      }
     }
     if (req.method === "prompts/get") {
       const p = (req.params ?? {}) as Record<string, unknown>;

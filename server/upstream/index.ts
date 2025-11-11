@@ -849,20 +849,39 @@ export async function listAggregatedPrompts(): Promise<
 > {
   const out: Array<{ upstream: string; namespace: string; name: string; description?: string }> =
     [];
-  for (const [name, inst] of upstreams.entries()) {
-    try {
-      const r = await inst.client.listPrompts?.();
-      const items = r && (r as PromptsListResult).prompts ? (r as PromptsListResult).prompts : [];
-      for (const it of items) {
-        out.push({
-          upstream: name,
-          namespace: inst.namespace,
-          name: it.name,
-          description: it.description,
-        });
+  
+  try {
+    for (const [name, inst] of upstreams.entries()) {
+      try {
+        // 添加超时保护，避免上游服务无响应导致阻塞
+        const timeoutPromise = new Promise<null>((_, reject) => 
+          setTimeout(() => reject(new Error('listPrompts timeout')), 5000)
+        );
+        
+        const r = await Promise.race([
+          inst.client.listPrompts?.(),
+          timeoutPromise
+        ]);
+        
+        const items = r && (r as PromptsListResult).prompts ? (r as PromptsListResult).prompts : [];
+        for (const it of items) {
+          out.push({
+            upstream: name,
+            namespace: inst.namespace,
+            name: it.name,
+            description: it.description,
+          });
+        }
+      } catch (e) { 
+        // 记录错误但不中断处理
+        console.warn(`Failed to list prompts from upstream ${name}:`, String(e));
       }
-    } catch (_) { /* ignore */ }
+    }
+  } catch (e) {
+    // 捕获任何意外错误
+    console.error('Error in listAggregatedPrompts:', String(e));
   }
+  
   return out;
 }
 
