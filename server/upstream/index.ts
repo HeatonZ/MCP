@@ -813,23 +813,52 @@ export async function listAggregatedResources(): Promise<
   const out: Array<
     { upstream: string; namespace: string; uri: string; title?: string; mimeType?: string }
   > = [];
-  for (const [name, inst] of upstreams.entries()) {
-    try {
-      const r = await inst.client.listResources?.();
-      const items = r && (r as ResourcesListResult).resources
-        ? (r as ResourcesListResult).resources
-        : [];
-      for (const it of items) {
-        out.push({
-          upstream: name,
-          namespace: inst.namespace,
-          uri: it.uri,
-          title: it.title,
-          mimeType: it.mimeType,
-        });
+  
+  try {
+    for (const [name, inst] of upstreams.entries()) {
+      try {
+        // 检查上游是否支持 listResources
+        if (!inst.client.listResources) {
+          continue; // 跳过不支持的上游
+        }
+
+        // 添加超时保护
+        const timeoutPromise = new Promise<null>((_, reject) => 
+          setTimeout(() => reject(new Error('listResources timeout')), 5000)
+        );
+        
+        const r = await Promise.race([
+          inst.client.listResources(),
+          timeoutPromise
+        ]);
+        
+        const items = r && (r as ResourcesListResult).resources
+          ? (r as ResourcesListResult).resources
+          : [];
+        for (const it of items) {
+          out.push({
+            upstream: name,
+            namespace: inst.namespace,
+            uri: it.uri,
+            title: it.title,
+            mimeType: it.mimeType,
+          });
+        }
+      } catch (e) {
+        const errorMsg = String(e);
+        // 静默处理"Method not found"错误（上游不支持该方法）
+        if (errorMsg.includes('Method not found') || errorMsg.includes('-32601')) {
+          // 这是正常的，不需要警告
+          continue;
+        }
+        // 其他错误记录警告
+        console.warn(`Failed to list resources from upstream ${name}:`, errorMsg);
       }
-    } catch (_) { /* ignore one upstream failure */ }
+    }
+  } catch (e) {
+    console.error('Error in listAggregatedResources:', String(e));
   }
+  
   return out;
 }
 
@@ -853,13 +882,18 @@ export async function listAggregatedPrompts(): Promise<
   try {
     for (const [name, inst] of upstreams.entries()) {
       try {
+        // 检查上游是否支持 listPrompts
+        if (!inst.client.listPrompts) {
+          continue; // 跳过不支持的上游
+        }
+
         // 添加超时保护，避免上游服务无响应导致阻塞
         const timeoutPromise = new Promise<null>((_, reject) => 
           setTimeout(() => reject(new Error('listPrompts timeout')), 5000)
         );
         
         const r = await Promise.race([
-          inst.client.listPrompts?.(),
+          inst.client.listPrompts(),
           timeoutPromise
         ]);
         
@@ -873,8 +907,14 @@ export async function listAggregatedPrompts(): Promise<
           });
         }
       } catch (e) { 
-        // 记录错误但不中断处理
-        console.warn(`Failed to list prompts from upstream ${name}:`, String(e));
+        const errorMsg = String(e);
+        // 静默处理"Method not found"错误（上游不支持该方法）
+        if (errorMsg.includes('Method not found') || errorMsg.includes('-32601')) {
+          // 这是正常的，不需要警告
+          continue;
+        }
+        // 其他错误记录警告
+        console.warn(`Failed to list prompts from upstream ${name}:`, errorMsg);
       }
     }
   } catch (e) {
