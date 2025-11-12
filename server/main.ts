@@ -161,7 +161,9 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
   if (url.pathname === "/api/health") {
     // 增强健康检查，包含MCP连接状态
     const { getSessionStats } = await import("@server/http/mcp_sessions.ts");
+    const { connectionManager } = await import("@server/connection/manager.ts");
     const sessionStats = getSessionStats();
+    const connStats = connectionManager.getStats();
     const health = {
       ok: true,
       timestamp: Date.now(),
@@ -172,6 +174,7 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
       },
       mcp: {
         sessions: sessionStats,
+        connections: connStats,
         endpoints: {
           http: currentCfg.features?.enableMcpHttp !== false,
           sse: currentCfg.features?.enableMcpSse !== false
