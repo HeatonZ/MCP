@@ -43,6 +43,7 @@ export async function createMcpServer(): Promise<McpServer> {
     }
   } catch (_) { /* ignore resource bridge errors on boot */ }
 
+  // 本地资源注册（确保至少有几个资源，避免 Cursor 的 fetch failed 错误）
   server.registerResource(
     "config",
     "config://app",
@@ -53,6 +54,61 @@ export async function createMcpServer(): Promise<McpServer> {
     },
     async (uri) => ({
       contents: [{ uri: uri.href, text: JSON.stringify(getConfigSync() ?? await loadConfig(), null, 2) }]
+    })
+  );
+
+  server.registerResource(
+    "server-info",
+    "info://server",
+    {
+      title: "服务器信息",
+      description: "MCP 服务器的基本信息和状态",
+      mimeType: "application/json"
+    },
+    async (uri) => ({
+      contents: [{ 
+        uri: uri.href, 
+        text: JSON.stringify({
+          name: "deno-mcp-demo",
+          version: getConfigSync()?.version ?? "0.1.0",
+          uptime: Math.floor(Deno.osUptime()),
+          capabilities: ["tools", "resources", "prompts"],
+          timestamp: new Date().toISOString()
+        }, null, 2) 
+      }]
+    })
+  );
+
+  server.registerResource(
+    "help",
+    "help://usage",
+    {
+      title: "使用帮助",
+      description: "MCP 服务器使用说明",
+      mimeType: "text/markdown"
+    },
+    async (uri) => ({
+      contents: [{ 
+        uri: uri.href, 
+        text: `# MCP 服务器使用帮助
+
+## 可用资源
+
+- \`config://app\` - 应用配置
+- \`info://server\` - 服务器信息
+- \`help://usage\` - 使用帮助
+
+## 可用提示词
+
+- \`review-code\` - 代码审查
+- \`explain-code\` - 代码解释
+- \`optimize-code\` - 代码优化
+
+## 可用工具
+
+查看 tools/list 获取完整工具列表
+` 
+      }]
     })
   );
 
@@ -95,6 +151,31 @@ export async function createMcpServer(): Promise<McpServer> {
     );
   }
 
+  // 注册本地提示词（必须至少有一个，避免 Cursor 的 fetch failed 错误）
+  server.registerPrompt(
+    "review-code",
+    { title: "代码审查", description: "审查代码质量和潜在问题", argsSchema: { code: z.string() } },
+    ({ code }) => ({
+      messages: [{ role: "user", content: { type: "text", text: `请审查以下代码:\n\n${code}` } }]
+    })
+  );
+
+  server.registerPrompt(
+    "explain-code",
+    { title: "解释代码", description: "解释代码的功能和实现", argsSchema: { code: z.string() } },
+    ({ code }) => ({
+      messages: [{ role: "user", content: { type: "text", text: `请解释以下代码:\n\n${code}` } }]
+    })
+  );
+
+  server.registerPrompt(
+    "optimize-code",
+    { title: "优化代码", description: "提供代码优化建议", argsSchema: { code: z.string() } },
+    ({ code }) => ({
+      messages: [{ role: "user", content: { type: "text", text: `请优化以下代码:\n\n${code}` } }]
+    })
+  );
+
   // 上游提示词桥接：将上游提示词注册为本地提示词，名称采用 namespace/name
   try {
     const prompts = await listAggregatedPrompts();
@@ -124,14 +205,6 @@ export async function createMcpServer(): Promise<McpServer> {
       );
     }
   } catch (_) { /* ignore prompt bridge errors on boot */ }
-
-  server.registerPrompt(
-    "review-code",
-    { title: "代码审查", description: "简单代码审查", argsSchema: { code: z.string() } },
-    ({ code }) => ({
-      messages: [{ role: "user", content: { type: "text", text: `请审查以下代码:\n\n${code}` } }]
-    })
-  );
 
   return server;
 } 

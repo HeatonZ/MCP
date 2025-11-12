@@ -127,8 +127,40 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
     }
 
     if (req.method === "resources/list") {
-      const items = await listAggregatedResources();
-      return { jsonrpc: "2.0", id, result: { resources: items } };
+      try {
+        const upstreamItems = await listAggregatedResources();
+        // 添加本地resources（避免 Cursor 的 fetch failed 错误）
+        const localResources = [
+          {
+            uri: "config://app",
+            name: "应用配置",
+            description: "当前应用配置",
+            mimeType: "application/json"
+          },
+          {
+            uri: "info://server",
+            name: "服务器信息",
+            description: "MCP 服务器的基本信息和状态",
+            mimeType: "application/json"
+          },
+          {
+            uri: "help://usage",
+            name: "使用帮助",
+            description: "MCP 服务器使用说明",
+            mimeType: "text/markdown"
+          }
+        ];
+        const items = [...localResources, ...upstreamItems];
+        return { jsonrpc: "2.0", id, result: { resources: items } };
+      } catch (e) {
+        logError("mcp-http", "resources/list failed", { error: String(e) });
+        // 即使出错也返回本地resources
+        return { jsonrpc: "2.0", id, result: { resources: [
+          { uri: "config://app", name: "应用配置", mimeType: "application/json" },
+          { uri: "info://server", name: "服务器信息", mimeType: "application/json" },
+          { uri: "help://usage", name: "使用帮助", mimeType: "text/markdown" }
+        ] } };
+      }
     }
     if (req.method === "resources/read") {
       const p = (req.params ?? {}) as Record<string, unknown>;
@@ -198,6 +230,50 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
           } catch (e) {
             return err(id, -32000, "Failed to read file", { error: String(e) });
           }
+        } else if (uri.startsWith('info://')) {
+          // 服务器信息资源
+          const { getConfigSync } = await import("@server/config.ts");
+          const info = {
+            name: "deno-mcp-demo",
+            version: getConfigSync()?.version ?? "0.1.0",
+            uptime: Math.floor(Deno.osUptime()),
+            capabilities: ["tools", "resources", "prompts"],
+            timestamp: new Date().toISOString()
+          };
+          return { 
+            jsonrpc: "2.0", 
+            id, 
+            result: { 
+              contents: [{ uri, text: JSON.stringify(info, null, 2), mimeType: "application/json" }] 
+            } 
+          };
+        } else if (uri.startsWith('help://')) {
+          // 帮助资源
+          const helpText = `# MCP 服务器使用帮助
+
+## 可用资源
+
+- \`config://app\` - 应用配置
+- \`info://server\` - 服务器信息  
+- \`help://usage\` - 使用帮助
+
+## 可用提示词
+
+- \`review-code\` - 代码审查
+- \`explain-code\` - 代码解释
+- \`optimize-code\` - 代码优化
+
+## 可用工具
+
+查看 tools/list 获取完整工具列表（7个工具）
+`;
+          return { 
+            jsonrpc: "2.0", 
+            id, 
+            result: { 
+              contents: [{ uri, text: helpText, mimeType: "text/markdown" }] 
+            } 
+          };
         } else {
           return err(id, -32601, "Unsupported resource URI scheme");
         }
@@ -208,12 +284,35 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
 
     if (req.method === "prompts/list") {
       try {
-        const items = await listAggregatedPrompts();
+        const upstreamItems = await listAggregatedPrompts();
+        // 添加本地prompts（避免 Cursor 的 fetch failed 错误）
+        const localPrompts = [
+          {
+            name: "review-code",
+            description: "审查代码质量和潜在问题",
+            arguments: [{ name: "code", description: "要审查的代码", required: true }]
+          },
+          {
+            name: "explain-code",
+            description: "解释代码的功能和实现",
+            arguments: [{ name: "code", description: "要解释的代码", required: true }]
+          },
+          {
+            name: "optimize-code",
+            description: "提供代码优化建议",
+            arguments: [{ name: "code", description: "要优化的代码", required: true }]
+          }
+        ];
+        const items = [...localPrompts, ...upstreamItems];
         return { jsonrpc: "2.0", id, result: { prompts: items } };
       } catch (e) {
         logError("mcp-http", "prompts/list failed", { error: String(e) });
-        // 即使出错也返回空列表，避免阻断客户端
-        return { jsonrpc: "2.0", id, result: { prompts: [] } };
+        // 即使出错也返回本地prompts
+        return { jsonrpc: "2.0", id, result: { prompts: [
+          { name: "review-code", description: "审查代码质量和潜在问题" },
+          { name: "explain-code", description: "解释代码的功能和实现" },
+          { name: "optimize-code", description: "提供代码优化建议" }
+        ] } };
       }
     }
     if (req.method === "prompts/get") {
