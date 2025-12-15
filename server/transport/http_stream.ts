@@ -1,4 +1,4 @@
-import type { McpServer } from "npm:@modelcontextprotocol/sdk/server/mcp.js";
+import type { McpServer } from "npm:@modelcontextprotocol/sdk@1.24.3/server/mcp.js";
 import { logError, logInfo } from "@server/logger.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
 

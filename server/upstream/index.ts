@@ -11,8 +11,8 @@ import { logError, logInfo, logWarn } from "@server/logger.ts";
 import type { ToolSpec } from "@shared/types/tool.ts";
 
 // MCP TS SDK client imports
-import { Client } from "npm:@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "npm:@modelcontextprotocol/sdk/client/stdio.js";
+import { Client } from "npm:@modelcontextprotocol/sdk@1.24.3/client/index.js";
+import { StdioClientTransport } from "npm:@modelcontextprotocol/sdk@1.24.3/client/stdio.js";
 import {
   initUpstreamMetrics,
   markConnected,

@@ -1,5 +1,5 @@
-import { Client } from "npm:@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "npm:@modelcontextprotocol/sdk/client/stdio.js";
+import { Client } from "npm:@modelcontextprotocol/sdk@1.24.3/client/index.js";
+import { StdioClientTransport } from "npm:@modelcontextprotocol/sdk@1.24.3/client/stdio.js";
 import type { UpstreamConfig } from "@shared/types/system.ts";
 
 type StatusListener = (s: { connected: boolean; lastError?: string }) => void;

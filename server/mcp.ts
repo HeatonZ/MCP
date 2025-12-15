@@ -1,4 +1,4 @@
-import { McpServer, ResourceTemplate } from "npm:@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "npm:@modelcontextprotocol/sdk@1.24.3/server/mcp.js";
 import { z } from "npm:zod";
 import { getConfigSync, loadConfig } from "@server/config.ts";
 import { getAllTools } from "@server/tools.ts";

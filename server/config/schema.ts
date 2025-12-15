@@ -20,9 +20,9 @@ export const AppConfigSchema = z.object({
 				mapping: z.object({
 					hideNamespacePrefix: z.boolean().optional(),
 					rename: z.object({
-						tools: z.record(z.string()).optional(),
-						resources: z.record(z.string()).optional(),
-						prompts: z.record(z.string()).optional(),
+						tools: z.record(z.string(), z.string()).optional(),
+						resources: z.record(z.string(), z.string()).optional(),
+						prompts: z.record(z.string(), z.string()).optional(),
 					}).optional(),
 					conflictPolicy: z.enum(["error", "last-wins"]).optional(),
 				}).optional(),
@@ -48,7 +48,7 @@ export const AppConfigSchema = z.object({
 				command: z.string().min(1),
 				args: z.array(z.string()).optional(),
 				cwd: z.string().optional(),
-				env: z.record(z.string()).optional(),
+				env: z.record(z.string(), z.string()).optional(),
 			}),
 			z.object({
 				transport: z.literal("http"),
@@ -58,9 +58,9 @@ export const AppConfigSchema = z.object({
 				mapping: z.object({
 					hideNamespacePrefix: z.boolean().optional(),
 					rename: z.object({
-						tools: z.record(z.string()).optional(),
-						resources: z.record(z.string()).optional(),
-						prompts: z.record(z.string()).optional(),
+						tools: z.record(z.string(), z.string()).optional(),
+						resources: z.record(z.string(), z.string()).optional(),
+						prompts: z.record(z.string(), z.string()).optional(),
 					}).optional(),
 					conflictPolicy: z.enum(["error", "last-wins"]).optional(),
 				}).optional(),
@@ -84,7 +84,7 @@ export const AppConfigSchema = z.object({
 					heartbeatMs: z.number().int().positive().optional(),
 				}).optional(),
 				url: z.string().min(1),
-				headers: z.record(z.string()).optional(),
+				headers: z.record(z.string(), z.string()).optional(),
 				auth: z.union([
 					z.object({ type: z.literal("bearer"), token: z.string().min(1) }),
 					z.object({ type: z.literal("basic"), username: z.string().min(1), password: z.string().min(1) }),
@@ -101,9 +101,9 @@ export const AppConfigSchema = z.object({
 				mapping: z.object({
 					hideNamespacePrefix: z.boolean().optional(),
 					rename: z.object({
-						tools: z.record(z.string()).optional(),
-						resources: z.record(z.string()).optional(),
-						prompts: z.record(z.string()).optional(),
+						tools: z.record(z.string(), z.string()).optional(),
+						resources: z.record(z.string(), z.string()).optional(),
+						prompts: z.record(z.string(), z.string()).optional(),
 					}).optional(),
 					conflictPolicy: z.enum(["error", "last-wins"]).optional(),
 				}).optional(),
@@ -127,7 +127,7 @@ export const AppConfigSchema = z.object({
 					heartbeatMs: z.number().int().positive().optional(),
 				}).optional(),
 				url: z.string().min(1),
-				headers: z.record(z.string()).optional(),
+				headers: z.record(z.string(), z.string()).optional(),
 				auth: z.union([
 					z.object({ type: z.literal("bearer"), token: z.string().min(1) }),
 					z.object({ type: z.literal("basic"), username: z.string().min(1), password: z.string().min(1) }),
@@ -144,9 +144,9 @@ export const AppConfigSchema = z.object({
 				mapping: z.object({
 					hideNamespacePrefix: z.boolean().optional(),
 					rename: z.object({
-						tools: z.record(z.string()).optional(),
-						resources: z.record(z.string()).optional(),
-						prompts: z.record(z.string()).optional(),
+						tools: z.record(z.string(), z.string()).optional(),
+						resources: z.record(z.string(), z.string()).optional(),
+						prompts: z.record(z.string(), z.string()).optional(),
 					}).optional(),
 					conflictPolicy: z.enum(["error", "last-wins"]).optional(),
 				}).optional(),
@@ -170,7 +170,7 @@ export const AppConfigSchema = z.object({
 					heartbeatMs: z.number().int().positive().optional(),
 				}).optional(),
 				url: z.string().min(1),
-				headers: z.record(z.string()).optional(),
+				headers: z.record(z.string(), z.string()).optional(),
 				auth: z.union([
 					z.object({ type: z.literal("bearer"), token: z.string().min(1) }),
 					z.object({ type: z.literal("basic"), username: z.string().min(1), password: z.string().min(1) }),
