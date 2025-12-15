@@ -1,4 +1,5 @@
 import { logInfo, logError, logWarn } from "@server/logger.ts";
+import { RECONNECT } from "@server/constants.ts";
 
 export type ReconnectConfig = {
   maxRetries?: number | "infinite";
@@ -31,10 +32,10 @@ export class ConnectionManager {
   private getReconnectConfig(connectionId: string): Required<ReconnectConfig> {
     const config = this.reconnectConfigs.get(connectionId) ?? {};
     return {
-      maxRetries: config.maxRetries ?? 5,
-      initialDelayMs: config.initialDelayMs ?? 1000,
-      maxDelayMs: config.maxDelayMs ?? 30000,
-      factor: config.factor ?? 2,
+      maxRetries: config.maxRetries ?? RECONNECT.MAX_RETRIES,
+      initialDelayMs: config.initialDelayMs ?? RECONNECT.INITIAL_DELAY,
+      maxDelayMs: config.maxDelayMs ?? RECONNECT.MAX_DELAY,
+      factor: config.factor ?? RECONNECT.BACKOFF_FACTOR,
     };
   }
 

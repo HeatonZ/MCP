@@ -2,6 +2,7 @@ import type { McpServer } from "npm:@modelcontextprotocol/sdk@1.24.3/server/mcp.
 import { logInfo, logError } from "@server/logger.ts";
 import { createSession, getSession, sseLine, touchSession, closeSession } from "@server/http/mcp_sessions.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
+import { TIMEOUTS } from "@server/constants.ts";
 
 const encoder = new TextEncoder();
 
@@ -17,7 +18,7 @@ export function createSseEndpoints(_server: McpServer) {
         logError("mcp-sse", "heartbeat failed", { sessionId, error: String(error) });
         clearInterval(ping);
       }
-    }, 10000); // 从15秒缩短到10秒
+    }, TIMEOUTS.HEARTBEAT_INTERVAL);
     return () => { 
       try { 
         clearInterval(ping); 

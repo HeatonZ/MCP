@@ -4,6 +4,7 @@ import { getUpstreamStatus } from "@server/upstream/metrics.ts";
 import { listAggregatedResources, listAggregatedPrompts, getAggregatedPrompt } from "@server/upstream/index.ts";
 import { getConfigSync } from "@server/config.ts";
 import { getServerInfo, getServerCapabilities, getFullServerInfo } from "@server/server_info.ts";
+import { MCP_PROTOCOL_VERSION } from "@server/constants.ts";
 
 type JsonValue = null | string | number | boolean | JsonValue[] | { [k: string]: JsonValue };
 type JsonRpcId = string | number | null;
@@ -40,7 +41,7 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
     // MCP 标准握手方法
     if (req.method === "initialize") {
       const p = (req.params ?? {}) as Record<string, unknown>;
-      const protocolVersion = String(p.protocolVersion ?? "2024-11-05");
+      const protocolVersion = String(p.protocolVersion ?? MCP_PROTOCOL_VERSION);
       const _clientInfo = (p.clientInfo ?? {}) as Record<string, unknown>;
       
       const serverInfo = await getServerInfo();

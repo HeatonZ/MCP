@@ -3,6 +3,7 @@ import { logInfo, logError } from "@server/logger.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
 import { getConfigSync } from "@server/config.ts";
 import { getServerInfo, getServerCapabilities } from "@server/server_info.ts";
+import { TIMEOUTS, INTERVALS } from "@server/constants.ts";
 
 const encoder = new TextEncoder();
 
@@ -144,7 +145,7 @@ export async function handleStreamableHttp(_server: McpServer, req: Request): Pr
             logError("streamable-http", "ping failed", { sessionId: session.id, error: String(error) });
             clearInterval(pingInterval);
           }
-        }, 10000); // 从15秒缩短到10秒
+        }, TIMEOUTS.HEARTBEAT_INTERVAL);
           
           // 清理处理 - 增强错误处理和日志
           const cleanup = () => {
@@ -240,7 +241,7 @@ export function handleStreamableHttpGet(_server: McpServer, req: Request): Respo
             logError("streamable-http", "ping failed", { sessionId: session.id, error: String(error) });
             clearInterval(pingInterval);
           }
-        }, 10000); // 从15秒缩短到10秒
+        }, TIMEOUTS.HEARTBEAT_INTERVAL);
         
         // 清理处理 - 增强错误处理和日志
         const cleanup = () => {

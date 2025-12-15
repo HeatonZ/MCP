@@ -1,6 +1,8 @@
 import { Client } from "npm:@modelcontextprotocol/sdk@1.24.3/client/index.js";
 import { StdioClientTransport } from "npm:@modelcontextprotocol/sdk@1.24.3/client/stdio.js";
 import type { UpstreamConfig } from "@shared/types/system.ts";
+import { getConfigSync, loadConfig } from "@server/config.ts";
+import { DEFAULT_CLIENT_NAME_PREFIX } from "@server/constants.ts";
 
 type StatusListener = (s: { connected: boolean; lastError?: string }) => void;
 
@@ -20,7 +22,8 @@ export async function createUpstreamClient(u: UpstreamConfig): Promise<{ client:
 
     if (u.transport === "stdio") {
         const transport = new StdioClientTransport({ command: u.command, args: u.args ?? [], cwd: u.cwd, env: u.env });
-        const client = new Client({ name: `proxy-${u.name}`, version: "0.0.0" });
+        const cfg = getConfigSync() ?? await loadConfig();
+        const client = new Client({ name: `${DEFAULT_CLIENT_NAME_PREFIX}-${u.name}`, version: cfg.version });
         await client.connect(transport);
         notify({ connected: true });
         return {

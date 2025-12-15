@@ -20,6 +20,7 @@ import {
   setCounts,
   setNamespace,
 } from "@server/upstream/metrics.ts";
+import { MCP_PROTOCOL_VERSION, DEFAULT_CLIENT_NAME_PREFIX, RECONNECT, TIMEOUTS } from "@server/constants.ts";
 
 type UpstreamInstance = {
   name: string;
@@ -479,12 +480,13 @@ function httpClientAdapter(url: string, headers?: Record<string, string>): McpCl
     console.log("Initializing MCP session with session ID:", sessionId);
 
     // Step 1: Send initialize request
+    const cfg = await ensureConfig();
     const initResult = await rpc("initialize", {
-      protocolVersion: "2025-06-18",
+      protocolVersion: MCP_PROTOCOL_VERSION,
       capabilities: {},
       clientInfo: {
-        name: "mcp-proxy",
-        version: "1.0.0",
+        name: DEFAULT_CLIENT_NAME_PREFIX,
+        version: cfg.version,
       },
     });
 
@@ -677,13 +679,13 @@ async function scheduleReconnect(upstreamName: string): Promise<void> {
   const connectionManagerModule = await import("@server/transport/connection_manager.ts");
   const { globalConnectionManager } = connectionManagerModule;
   
-  // 配置重连参数
+      // 配置重连参数
   if ("setReconnectConfig" in globalConnectionManager && typeof globalConnectionManager.setReconnectConfig === "function") {
     globalConnectionManager.setReconnectConfig(upstreamName, {
-      maxRetries: reconnectConfig.maxRetries ?? 5,
-      initialDelayMs: reconnectConfig.initialDelayMs ?? 1000,
-      maxDelayMs: reconnectConfig.maxDelayMs ?? 30000,
-      factor: reconnectConfig.factor ?? 2,
+      maxRetries: reconnectConfig.maxRetries ?? RECONNECT.MAX_RETRIES,
+      initialDelayMs: reconnectConfig.initialDelayMs ?? RECONNECT.INITIAL_DELAY,
+      maxDelayMs: reconnectConfig.maxDelayMs ?? RECONNECT.MAX_DELAY,
+      factor: reconnectConfig.factor ?? RECONNECT.BACKOFF_FACTOR,
     });
   }
   
@@ -729,7 +731,7 @@ async function performHealthCheck(name: string): Promise<boolean> {
   try {
     // 简单的健康检查：尝试列出工具
     const timeoutPromise = new Promise<never>((_, reject) => 
-      setTimeout(() => reject(new Error('Health check timeout')), 5000)
+      setTimeout(() => reject(new Error('Health check timeout')), TIMEOUTS.HEALTH_CHECK)
     );
     
     await Promise.race([
@@ -766,7 +768,7 @@ async function startHealthMonitoring(name: string): Promise<void> {
   }
 
   const reconnectConfig = u.reconnect ?? { enabled: true };
-  const heartbeatMs = reconnectConfig.heartbeatMs ?? 30000; // 默认 30 秒
+  const heartbeatMs = reconnectConfig.heartbeatMs ?? TIMEOUTS.HEARTBEAT_TIMEOUT;
 
   if (heartbeatMs <= 0 || reconnectConfig.enabled === false) {
     return; // 不启用健康检查
@@ -777,8 +779,8 @@ async function startHealthMonitoring(name: string): Promise<void> {
     
     if (!healthy) {
       const failures = inst.consecutiveFailures ?? 0;
-      // 连续失败 3 次后触发重连
-      if (failures >= 3) {
+      // 连续失败指定次数后触发重连
+      if (failures >= RECONNECT.CONSECUTIVE_FAILURES) {
         logError("upstream", "health check failed multiple times, triggering reconnect", { 
           name, 
           consecutiveFailures: failures 
@@ -997,7 +999,7 @@ export async function listAggregatedResources(): Promise<
 
         // 添加超时保护
         const timeoutPromise = new Promise<null>((_, reject) => 
-          setTimeout(() => reject(new Error('listResources timeout')), 5000)
+          setTimeout(() => reject(new Error('listResources timeout')), TIMEOUTS.HEALTH_CHECK)
         );
         
         const r = await Promise.race([
@@ -1062,7 +1064,7 @@ export async function listAggregatedPrompts(): Promise<
 
         // 添加超时保护，避免上游服务无响应导致阻塞
         const timeoutPromise = new Promise<null>((_, reject) => 
-          setTimeout(() => reject(new Error('listPrompts timeout')), 5000)
+          setTimeout(() => reject(new Error('listPrompts timeout')), TIMEOUTS.HEALTH_CHECK)
         );
         
         const r = await Promise.race([

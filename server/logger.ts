@@ -1,5 +1,6 @@
 import type { LogRecord, LogsSnapshot } from "@shared/types/log.ts";
 import { getConfigSync, onConfigChange } from "@server/config.ts";
+import { TIMEOUTS } from "@server/constants.ts";
 
 let maxLogs = getConfigSync()?.logging?.maxLogs ?? 1000;
 onConfigChange((cfg) => { maxLogs = cfg.logging?.maxLogs ?? maxLogs; });
@@ -46,7 +47,7 @@ export function createLogStream(signal: AbortSignal): Response {
       controller.enqueue(encoder.encode(`: connected\n\n`));
       const ping = setInterval(() => {
         controller.enqueue(encoder.encode(`event: ping\n` + `data: {"ts":${Date.now()}}\n\n`));
-      }, 15000);
+      }, TIMEOUTS.HTTP_REQUEST);
       signal.addEventListener("abort", () => {
         clearInterval(ping);
         clients.delete(controller);

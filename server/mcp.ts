@@ -6,9 +6,10 @@ import { listAggregatedResources, readAggregatedResource, listAggregatedPrompts,
 import { getFullServerInfo } from "@server/server_info.ts";
 
 export async function createMcpServer(): Promise<McpServer> {
+  const config = getConfigSync() ?? await loadConfig();
   const server = new McpServer({
-    name: getConfigSync()?.serverName ?? "deno-mcp",
-    version: getConfigSync()?.version ?? "0.0.0"
+    name: config.serverName,
+    version: config.version
   });
 
   // 插件初始化应在进程启动时进行，避免此处重复初始化导致工具重复注册

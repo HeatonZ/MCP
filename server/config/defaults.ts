@@ -1,9 +1,21 @@
 import type { AppConfig } from "@shared/types/system.ts";
+import { DEFAULT_HTTP_PORT, DEFAULT_ALLOWED_DIRS, DEFAULT_CORS_ORIGINS, TIMEOUTS, INTERVALS, RECONNECT, LIMITS } from "@server/constants.ts";
+
+// 从 version.json 读取版本号
+const VERSION = await (async () => {
+	try {
+		const versionFile = await Deno.readTextFile("./version.json");
+		const versionData = JSON.parse(versionFile);
+		return versionData.version;
+	} catch {
+		return "0.1.0"; // 后备版本
+	}
+})();
 
 export const defaultConfig: AppConfig = {
 	serverName: "deno-mcp",
-	version: "0.0.0",
-	httpPort: 8787,
+	version: VERSION,
+	httpPort: DEFAULT_HTTP_PORT,
 	features: {
 		enableHttpAdmin: true,
 		enableCodeEditing: true,
@@ -11,35 +23,35 @@ export const defaultConfig: AppConfig = {
 		enableMcpHttp: true,
 	},
 	security: {
-		allowedDirs: ["server", "config"],
+		allowedDirs: DEFAULT_ALLOWED_DIRS,
 		http: {
 			allowedHosts: [],
-			timeoutMs: 15000,
-			maxResponseBytes: 1000000,
+			timeoutMs: TIMEOUTS.HTTP_REQUEST,
+			maxResponseBytes: LIMITS.MAX_RESPONSE_BYTES,
 		},
 	},
 	// MCP连接管理配置
 	mcp: {
 		heartbeat: {
-			intervalMs: 10000, // 心跳间隔10秒
-			timeoutMs: 30000,  // 心跳超时30秒
+			intervalMs: TIMEOUTS.HEARTBEAT_INTERVAL,
+			timeoutMs: TIMEOUTS.HEARTBEAT_TIMEOUT,
 		},
 		session: {
-			maxIdleMs: 30 * 60 * 1000, // 会话最大空闲时间30分钟
-			cleanupIntervalMs: 2 * 60 * 1000, // 清理间隔2分钟
+			maxIdleMs: TIMEOUTS.SESSION_IDLE,
+			cleanupIntervalMs: INTERVALS.CLEANUP,
 		},
 		reconnect: {
 			enabled: true,
-			maxAttempts: 5,
-			baseDelayMs: 1000,
-			maxDelayMs: 30000,
+			maxAttempts: RECONNECT.MAX_RETRIES,
+			baseDelayMs: RECONNECT.INITIAL_DELAY,
+			maxDelayMs: RECONNECT.MAX_DELAY,
 		},
 	},
 	cors: {
-		allowedOrigins: ["*"]
+		allowedOrigins: DEFAULT_CORS_ORIGINS
 	},
 	logging: {
-		maxLogs: 1000,
+		maxLogs: LIMITS.MAX_LOGS,
 		// 启用MCP连接相关的详细日志
 		verboseMcp: false,
 	},

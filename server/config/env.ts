@@ -1,4 +1,5 @@
 import type { AppConfig } from "@shared/types/system.ts";
+import { DEFAULT_ALLOWED_DIRS, TIMEOUTS, LIMITS } from "@server/constants.ts";
 
 export function applyEnvOverrides(cfg: AppConfig): AppConfig {
 	const out: AppConfig = JSON.parse(JSON.stringify(cfg));
@@ -6,14 +7,14 @@ export function applyEnvOverrides(cfg: AppConfig): AppConfig {
 	if (port) out.httpPort = Number(port);
 	const allowedDirs = Deno.env.get("MCP_ALLOWED_DIRS");
 	if (allowedDirs) {
-		out.security = out.security ?? { allowedDirs: [], http: { allowedHosts: [], timeoutMs: 15000, maxResponseBytes: 1000000 } };
+		out.security = out.security ?? { allowedDirs: [], http: { allowedHosts: [], timeoutMs: TIMEOUTS.HTTP_REQUEST, maxResponseBytes: LIMITS.MAX_RESPONSE_BYTES } };
 		out.security.allowedDirs = splitList(allowedDirs);
 	}
 	const allowedHosts = Deno.env.get("MCP_HTTP_ALLOWED_HOSTS");
 	const timeoutMs = Deno.env.get("MCP_HTTP_TIMEOUT_MS");
 	const maxBytes = Deno.env.get("MCP_HTTP_MAX_BYTES");
 	if (allowedHosts || timeoutMs || maxBytes) {
-		out.security = out.security ?? { allowedDirs: ["server", "config"], http: { allowedHosts: [], timeoutMs: 15000, maxResponseBytes: 1000000 } };
+		out.security = out.security ?? { allowedDirs: DEFAULT_ALLOWED_DIRS, http: { allowedHosts: [], timeoutMs: TIMEOUTS.HTTP_REQUEST, maxResponseBytes: LIMITS.MAX_RESPONSE_BYTES } };
 		out.security.http.allowedHosts = allowedHosts ? splitList(allowedHosts) : out.security.http.allowedHosts;
 		out.security.http.timeoutMs = timeoutMs ? Number(timeoutMs) : out.security.http.timeoutMs;
 		out.security.http.maxResponseBytes = maxBytes ? Number(maxBytes) : out.security.http.maxResponseBytes;
