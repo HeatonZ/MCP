@@ -27,6 +27,9 @@ type UpstreamInstance = {
   client: McpClientLike;
   transport?: StdioClientTransport;
   tools: ToolSpec[];
+  healthCheckTimer?: number;
+  lastHealthCheck?: number;
+  consecutiveFailures?: number;
 };
 
 const upstreams: Map<string, UpstreamInstance> = new Map();
@@ -197,13 +200,13 @@ function extractSimpleSchema(jsonSchema: unknown): SimpleSchemaExtraction | unde
 }
 
 // 当前所有已配置的上游都提供完整的schema，不再需要手动fallback定义
-function getManualSchema(toolName: string): SimpleSchemaExtraction | undefined {
+function getManualSchema(_toolName: string): SimpleSchemaExtraction | undefined {
   return undefined;
 }
 
 const fallbackUsage = new Map<string, { count: number; lastUsed?: number }>();
 
-function markFallbackUsage(toolName: string) {
+function _markFallbackUsage(toolName: string) {
   const current = fallbackUsage.get(toolName) ?? { count: 0, lastUsed: undefined };
   current.count += 1;
   current.lastUsed = Date.now();
@@ -607,7 +610,15 @@ export async function initUpstreams(): Promise<void> {
         continue;
       }
       const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns, u);
-      upstreams.set(u.name, { name: u.name, namespace: ns, client: clientLike, transport, tools });
+      upstreams.set(u.name, { 
+        name: u.name, 
+        namespace: ns, 
+        client: clientLike, 
+        transport, 
+        tools,
+        lastHealthCheck: Date.now(),
+        consecutiveFailures: 0
+      });
       const toolNames: string[] = [];
       for (const t of tools) toolNames.push(t.name);
       logInfo(
@@ -618,6 +629,12 @@ export async function initUpstreams(): Promise<void> {
       markConnected(u.name);
       setNamespace(u.name, ns);
       setCounts(u.name, { toolCount: tools.length });
+      
+      // 启动健康监控
+      const reconnectConfig = u.reconnect ?? { enabled: true };
+      if (reconnectConfig.enabled !== false) {
+        startHealthMonitoring(u.name);
+      }
     } catch (e) {
       console.log("Upstream connection failed for", u.name, ":", e);
       logError(
@@ -636,7 +653,7 @@ export async function initUpstreams(): Promise<void> {
   }
 
   // 添加启动总结日志
-  const summary = {};
+  const summary: Record<string, { status: string; tools?: number; error?: string }> = {};
   for (const u of list) {
     const inst = upstreams.get(u.name);
     if (inst) {
@@ -646,16 +663,158 @@ export async function initUpstreams(): Promise<void> {
       summary[u.name] = { status: "failed", error: "Connection failed" };
     }
   }
-  logInfo("upstream", "startup summary", { summary });
+  logInfo("upstream", "startup summary", { summary } as Record<string, unknown>);
 }
 
 async function scheduleReconnect(upstreamName: string): Promise<void> {
-  const { ConnectionManager } = await import("@server/transport/connection_manager.ts");
-  const connectionManager = new ConnectionManager();
+  const cfg = await ensureConfig();
+  const u = (cfg.upstreams ?? []).find((x) => x.name === upstreamName && x.enabled !== false);
+  if (!u) return;
 
-  await connectionManager.attemptReconnect(upstreamName, async () => {
-    return await reconnectUpstream(upstreamName);
+  const reconnectConfig = u.reconnect ?? { enabled: true };
+  if (reconnectConfig.enabled === false) return;
+
+  const connectionManagerModule = await import("@server/transport/connection_manager.ts");
+  const { globalConnectionManager } = connectionManagerModule;
+  
+  // 配置重连参数
+  if ("setReconnectConfig" in globalConnectionManager && typeof globalConnectionManager.setReconnectConfig === "function") {
+    globalConnectionManager.setReconnectConfig(upstreamName, {
+      maxRetries: reconnectConfig.maxRetries ?? 5,
+      initialDelayMs: reconnectConfig.initialDelayMs ?? 1000,
+      maxDelayMs: reconnectConfig.maxDelayMs ?? 30000,
+      factor: reconnectConfig.factor ?? 2,
+    });
+  }
+  
+  // 持续尝试重连，直到成功或达到最大次数
+  const attemptReconnectLoop = async (): Promise<void> => {
+    const success = await globalConnectionManager.attemptReconnect(upstreamName, async () => {
+      const result = await reconnectUpstream(upstreamName);
+      if (result) {
+        logInfo("upstream", "reconnect successful, starting health monitoring", { name: upstreamName });
+        // 重连成功后启动健康检查
+        startHealthMonitoring(upstreamName);
+      }
+      return result;
+    });
+
+    // 如果失败且还有重试次数，继续尝试
+    if (!success) {
+      const stats = globalConnectionManager.getReconnectStats(upstreamName);
+      const maxAttempts = reconnectConfig.maxRetries === "infinite" 
+        ? Number.MAX_SAFE_INTEGER 
+        : (reconnectConfig.maxRetries ?? 5);
+      
+      if (stats.attempts < maxAttempts) {
+        // 继续尝试重连
+        await attemptReconnectLoop();
+      } else {
+        logError("upstream", "reconnect failed after max attempts", { 
+          name: upstreamName, 
+          attempts: stats.attempts 
+        });
+      }
+    }
+  };
+
+  await attemptReconnectLoop();
+}
+
+// 健康检查：尝试调用 listTools 来验证连接
+async function performHealthCheck(name: string): Promise<boolean> {
+  const inst = upstreams.get(name);
+  if (!inst) return false;
+
+  try {
+    // 简单的健康检查：尝试列出工具
+    const timeoutPromise = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Health check timeout')), 5000)
+    );
+    
+    await Promise.race([
+      inst.client.listTools(),
+      timeoutPromise
+    ]);
+    
+    inst.lastHealthCheck = Date.now();
+    inst.consecutiveFailures = 0;
+    return true;
+  } catch (e) {
+    logWarn("upstream", "health check failed", { 
+      name, 
+      error: String(e),
+      consecutiveFailures: (inst.consecutiveFailures ?? 0) + 1
+    });
+    inst.consecutiveFailures = (inst.consecutiveFailures ?? 0) + 1;
+    return false;
+  }
+}
+
+// 启动健康监控
+async function startHealthMonitoring(name: string): Promise<void> {
+  const cfg = await ensureConfig();
+  const u = (cfg.upstreams ?? []).find((x) => x.name === name && x.enabled !== false);
+  if (!u) return;
+
+  const inst = upstreams.get(name);
+  if (!inst) return;
+
+  // 清理旧的定时器
+  if (inst.healthCheckTimer) {
+    clearInterval(inst.healthCheckTimer);
+  }
+
+  const reconnectConfig = u.reconnect ?? { enabled: true };
+  const heartbeatMs = reconnectConfig.heartbeatMs ?? 30000; // 默认 30 秒
+
+  if (heartbeatMs <= 0 || reconnectConfig.enabled === false) {
+    return; // 不启用健康检查
+  }
+
+  inst.healthCheckTimer = setInterval(async () => {
+    const healthy = await performHealthCheck(name);
+    
+    if (!healthy) {
+      const failures = inst.consecutiveFailures ?? 0;
+      // 连续失败 3 次后触发重连
+      if (failures >= 3) {
+        logError("upstream", "health check failed multiple times, triggering reconnect", { 
+          name, 
+          consecutiveFailures: failures 
+        });
+        
+        // 停止健康检查
+        if (inst.healthCheckTimer) {
+          clearInterval(inst.healthCheckTimer);
+          inst.healthCheckTimer = undefined;
+        }
+        
+        // 标记断线
+        markDisconnected(name, "Health check failed");
+        
+        // 触发重连
+        if (reconnectConfig.enabled !== false) {
+          scheduleReconnect(name);
+        }
+      }
+    }
+  }, heartbeatMs) as unknown as number;
+
+  logInfo("upstream", "health monitoring started", { 
+    name, 
+    heartbeatMs 
   });
+}
+
+// 停止健康监控
+function stopHealthMonitoring(name: string): void {
+  const inst = upstreams.get(name);
+  if (inst?.healthCheckTimer) {
+    clearInterval(inst.healthCheckTimer);
+    inst.healthCheckTimer = undefined;
+    logInfo("upstream", "health monitoring stopped", { name });
+  }
 }
 
 export async function reconnectUpstream(name: string): Promise<boolean> {
@@ -665,13 +824,18 @@ export async function reconnectUpstream(name: string): Promise<boolean> {
   try {
     // dispose old
     const old = upstreams.get(name);
-    if (
-      old?.transport &&
-      typeof (old.transport as unknown as { close?: () => Promise<void> }).close === "function"
-    ) {
-      try {
-        await (old.transport as unknown as { close: () => Promise<void> }).close();
-      } catch { /* ignore */ }
+    if (old) {
+      // 停止健康监控
+      stopHealthMonitoring(name);
+      
+      if (
+        old.transport &&
+        typeof (old.transport as unknown as { close?: () => Promise<void> }).close === "function"
+      ) {
+        try {
+          await (old.transport as unknown as { close: () => Promise<void> }).close();
+        } catch { /* ignore */ }
+      }
     }
     upstreams.delete(name);
     // re-init single upstream
@@ -698,12 +862,21 @@ export async function reconnectUpstream(name: string): Promise<boolean> {
       return false;
     }
     const tools: ToolSpec[] = await fetchToolsAsSpecs(clientLike, ns, u);
-    upstreams.set(u.name, { name: u.name, namespace: ns, client: clientLike, transport, tools });
+    upstreams.set(u.name, { 
+      name: u.name, 
+      namespace: ns, 
+      client: clientLike, 
+      transport, 
+      tools,
+      lastHealthCheck: Date.now(),
+      consecutiveFailures: 0
+    });
     markConnected(u.name);
     setNamespace(u.name, ns);
     setCounts(u.name, { toolCount: tools.length });
     return true;
-  } catch {
+  } catch (e) {
+    logError("upstream", "reconnect failed", { name, error: String(e) });
     return false;
   }
 }
@@ -711,7 +884,7 @@ export async function reconnectUpstream(name: string): Promise<boolean> {
 async function fetchToolsAsSpecs(
   client: McpClientLike,
   namespace: string,
-  upstreamConfig?: any,
+  upstreamConfig?: { mapping?: { hideNamespacePrefix?: boolean } },
 ): Promise<ToolSpec[]> {
   const list = await client.listTools();
   const specs: ToolSpec[] = [];
@@ -724,12 +897,12 @@ async function fetchToolsAsSpecs(
     const zodSchema = undefined;
 
     // 从上游工具的inputSchema中提取简化的schema信息，如果为空则尝试使用手动定义的schema
-    let extracted = extractSimpleSchema(t.inputSchema);
-    let inputSchema = extracted
+    const extracted = extractSimpleSchema(t.inputSchema);
+    let inputSchema: { properties: Record<string, "string" | "number" | "json" | "boolean">; required: string[]; source: "upstream" | "manual" } | undefined = extracted
       ? {
         properties: extracted.properties,
         required: extracted.required,
-        source: "upstream" as const,
+        source: "upstream",
       }
       : undefined;
 
@@ -935,4 +1108,64 @@ export async function getAggregatedPrompt(
   const r = await inst.client.getPrompt?.({ name, arguments: args ?? {} });
   if (!r) return { messages: [] };
   return r as GetPromptResult;
+}
+
+// 获取所有上游的连接状态
+export async function getUpstreamConnectionStatus(): Promise<Record<string, {
+  connected: boolean;
+  lastHealthCheck?: number;
+  consecutiveFailures?: number;
+  reconnectStats?: { attempts: number; isScheduled: boolean };
+}>> {
+  const { globalConnectionManager } = await import("@server/transport/connection_manager.ts");
+  const allStats = globalConnectionManager.getAllReconnectStats();
+  
+  const status: Record<string, {
+    connected: boolean;
+    lastHealthCheck?: number;
+    consecutiveFailures?: number;
+    reconnectStats?: { attempts: number; isScheduled: boolean };
+  }> = {};
+
+  for (const [name, inst] of upstreams.entries()) {
+    status[name] = {
+      connected: true,
+      lastHealthCheck: inst.lastHealthCheck,
+      consecutiveFailures: inst.consecutiveFailures,
+      reconnectStats: allStats[name],
+    };
+  }
+
+  // 添加正在重连但尚未成功的连接
+  for (const [name, stats] of Object.entries(allStats)) {
+    if (!status[name]) {
+      status[name] = {
+        connected: false,
+        reconnectStats: stats,
+      };
+    }
+  }
+
+  return status;
+}
+
+// 手动触发上游重连
+export async function manualReconnectUpstream(name: string): Promise<boolean> {
+  logInfo("upstream", "manual reconnect triggered", { name });
+  
+  const inst = upstreams.get(name);
+  if (inst) {
+    // 如果已连接，先停止健康监控
+    stopHealthMonitoring(name);
+  }
+  
+  const result = await reconnectUpstream(name);
+  if (result) {
+    startHealthMonitoring(name);
+  } else {
+    // 如果手动重连失败，触发自动重连机制
+    scheduleReconnect(name);
+  }
+  
+  return result;
 }

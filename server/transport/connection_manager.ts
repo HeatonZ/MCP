@@ -1,12 +1,17 @@
 import { logInfo, logError, logWarn } from "@server/logger.ts";
 
+export type ReconnectConfig = {
+  maxRetries?: number | "infinite";
+  initialDelayMs?: number;
+  maxDelayMs?: number;
+  factor?: number;
+};
+
 // 连接管理器 - 处理自动重连和连接恢复
 export class ConnectionManager {
   private reconnectAttempts = new Map<string, number>();
   private reconnectTimers = new Map<string, number>();
-  private maxReconnectAttempts = 5;
-  private baseReconnectDelay = 1000; // 1秒
-  private maxReconnectDelay = 30000; // 30秒
+  private reconnectConfigs = new Map<string, ReconnectConfig>();
 
   constructor() {
     // 定期清理过期的重连尝试记录
@@ -14,26 +19,52 @@ export class ConnectionManager {
   }
 
   /**
+   * 设置连接的重连配置
+   */
+  setReconnectConfig(connectionId: string, config: ReconnectConfig): void {
+    this.reconnectConfigs.set(connectionId, config);
+  }
+
+  /**
+   * 获取连接的重连配置
+   */
+  private getReconnectConfig(connectionId: string): Required<ReconnectConfig> {
+    const config = this.reconnectConfigs.get(connectionId) ?? {};
+    return {
+      maxRetries: config.maxRetries ?? 5,
+      initialDelayMs: config.initialDelayMs ?? 1000,
+      maxDelayMs: config.maxDelayMs ?? 30000,
+      factor: config.factor ?? 2,
+    };
+  }
+
+  /**
    * 尝试重连指定的连接
    */
   attemptReconnect(connectionId: string, reconnectFn: () => Promise<boolean>): Promise<boolean> {
     const attempts = this.reconnectAttempts.get(connectionId) || 0;
+    const config = this.getReconnectConfig(connectionId);
     
-    if (attempts >= this.maxReconnectAttempts) {
+    const maxAttempts = config.maxRetries === "infinite" 
+      ? Number.MAX_SAFE_INTEGER 
+      : config.maxRetries;
+    
+    if (attempts >= maxAttempts) {
       logError("connection-manager", "max reconnect attempts reached", { connectionId, attempts });
-      return false;
+      return Promise.resolve(false);
     }
 
     // 计算延迟时间（指数退避）
     const delay = Math.min(
-      this.baseReconnectDelay * Math.pow(2, attempts),
-      this.maxReconnectDelay
+      config.initialDelayMs * Math.pow(config.factor, attempts),
+      config.maxDelayMs
     );
 
     logInfo("connection-manager", "scheduling reconnect", { 
       connectionId, 
       attempt: attempts + 1, 
-      delayMs: delay 
+      delayMs: delay,
+      maxRetries: config.maxRetries
     });
 
     return new Promise((resolve) => {

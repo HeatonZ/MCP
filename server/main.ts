@@ -6,7 +6,12 @@ import { createSseEndpoints } from "@server/transport/http_sse.ts";
 import { handleHttpRpc } from "@server/transport/http_stream.ts";
 import { handleStreamableHttp, handleStreamableHttpGet } from "@server/transport/streamable_http.ts";
 import { handleRpcPayload } from "@server/transport/rpc.ts";
-import { getFallbackUsageSummary, reconnectUpstream } from "@server/upstream/index.ts";
+import { 
+  getFallbackUsageSummary, 
+  reconnectUpstream, 
+  getUpstreamConnectionStatus,
+  manualReconnectUpstream 
+} from "@server/upstream/index.ts";
 import { createLogStream, getSnapshot, logError, logInfo } from "@server/logger.ts";
 import { safeResolve, listFilesRecursive } from "@server/security/paths.ts";
 import { requireAuth, handleLogin, handleLogout, getAuthStatus } from "@server/auth.ts";
@@ -386,6 +391,34 @@ async function routeRequest(req: Request, bootCfg: ReturnType<typeof getConfigSy
         upstreams: currentCfg.upstreams?.length || 0
       };
       return new Response(JSON.stringify(diagnostics, null, 2), { headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } });
+    }
+  }
+
+  // 上游连接状态 API
+  if (url.pathname === "/api/upstream/status") {
+    if (req.method === "GET") {
+      const status = await getUpstreamConnectionStatus();
+      return new Response(JSON.stringify(status, null, 2), { 
+        headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+      });
+    }
+  }
+
+  // 手动触发上游重连 API
+  if (url.pathname.startsWith("/api/upstream/reconnect/")) {
+    if (req.method === "POST") {
+      const upstreamName = url.pathname.replace("/api/upstream/reconnect/", "");
+      if (!upstreamName) {
+        return new Response(JSON.stringify({ error: "Missing upstream name" }), { 
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+        });
+      }
+      
+      const success = await manualReconnectUpstream(upstreamName);
+      return new Response(JSON.stringify({ success, upstream: upstreamName }), { 
+        headers: { "Content-Type": "application/json", ...corsHeaders(origin, cors) } 
+      });
     }
   }
 
