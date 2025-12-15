@@ -39,6 +39,11 @@ pnpm --dir frontend dev
 - `shared/types/` 统一类型目录（system、api、log、tool）
 - `config/` 配置文件
 - `frontend/` Vue3 + Element Plus + Monaco
+- `docs/` 文档目录
+
+## 文档
+
+- [断线重连机制](docs/reconnection.md) - 上游连接的自动重连配置和使用说明
 
 ## Docker
 ```bash

@@ -20,7 +20,15 @@
       "command": "npx",
       "args": ["-y", "@upstash/context7-mcp"],
       "namespace": "context7",
-      "enabled": true
+      "enabled": true,
+      "reconnect": {
+        "enabled": true,
+        "maxRetries": 5,
+        "initialDelayMs": 1000,
+        "maxDelayMs": 30000,
+        "factor": 2,
+        "heartbeatMs": 30000
+      }
     },{
       "name": "figma",
       "transport": "stdio",
@@ -29,6 +37,14 @@
       "enabled": false,
       "mapping": {
         "hideNamespacePrefix": true
+      },
+      "reconnect": {
+        "enabled": true,
+        "maxRetries": "infinite",
+        "initialDelayMs": 2000,
+        "maxDelayMs": 60000,
+        "factor": 2,
+        "heartbeatMs": 60000
       }
     }
   ],
