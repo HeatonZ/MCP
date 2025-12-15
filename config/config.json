@@ -50,5 +50,21 @@
   ],
   "upstreamRefresh": {
     "intervalMinutes": 1440
+  },
+  "connection": {
+    "heartbeat": {
+      "intervalMs": 10000,
+      "timeoutMs": 30000
+    },
+    "session": {
+      "maxIdleMs": 1800000,
+      "cleanupIntervalMs": 120000
+    },
+    "reconnect": {
+      "enabled": true,
+      "maxAttempts": 5,
+      "baseDelayMs": 1000,
+      "maxDelayMs": 30000
+    }
   }
 } 

@@ -43,7 +43,9 @@ pnpm --dir frontend dev
 
 ## 文档
 
+- [连接架构和断线重连体系](docs/connection-architecture.md) - 完整的连接架构和三层重连机制说明
 - [断线重连机制](docs/reconnection.md) - 上游连接的自动重连配置和使用说明
+- [AI 编辑器客户端断线重连指南](docs/client-reconnection.md) - Claude Desktop、Cursor 等客户端的连接和重连处理
 
 ## Docker
 ```bash
