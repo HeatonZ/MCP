@@ -3,6 +3,7 @@ import { logError } from "@server/logger.ts";
 import { getUpstreamStatus } from "@server/upstream/metrics.ts";
 import { listAggregatedResources, listAggregatedPrompts, getAggregatedPrompt } from "@server/upstream/index.ts";
 import { getConfigSync } from "@server/config.ts";
+import { getServerInfo, getServerCapabilities, getFullServerInfo } from "@server/server_info.ts";
 
 type JsonValue = null | string | number | boolean | JsonValue[] | { [k: string]: JsonValue };
 type JsonRpcId = string | number | null;
@@ -42,22 +43,16 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
       const protocolVersion = String(p.protocolVersion ?? "2024-11-05");
       const _clientInfo = (p.clientInfo ?? {}) as Record<string, unknown>;
       
-      const cfg = getConfigSync();
+      const serverInfo = await getServerInfo();
+      const capabilities = await getServerCapabilities();
+      
       return {
         jsonrpc: "2.0",
         id,
         result: {
           protocolVersion,
-          capabilities: {
-            tools: {},
-            resources: {},
-            prompts: {},
-            logging: {}
-          },
-          serverInfo: {
-            name: cfg?.serverName ?? "deno-mcp-server",
-            version: cfg?.version ?? "0.1.0"
-          }
+          capabilities,
+          serverInfo
         }
       };
     }
@@ -232,14 +227,7 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
           }
         } else if (uri.startsWith('info://')) {
           // 服务器信息资源
-          const { getConfigSync } = await import("@server/config.ts");
-          const info = {
-            name: "deno-mcp-demo",
-            version: getConfigSync()?.version ?? "0.1.0",
-            uptime: Math.floor(Deno.osUptime()),
-            capabilities: ["tools", "resources", "prompts"],
-            timestamp: new Date().toISOString()
-          };
+          const info = await getFullServerInfo();
           return { 
             jsonrpc: "2.0", 
             id, 
@@ -249,6 +237,8 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
           };
         } else if (uri.startsWith('help://')) {
           // 帮助资源
+          const tools = await getAllTools();
+          const toolCount = tools.length;
           const helpText = `# MCP 服务器使用帮助
 
 ## 可用资源
@@ -265,7 +255,7 @@ async function handleOne(req: JsonRpcRequest): Promise<JsonRpcResponse> {
 
 ## 可用工具
 
-查看 tools/list 获取完整工具列表（7个工具）
+当前已注册 ${toolCount} 个工具，查看 tools/list 获取完整工具列表
 `;
           return { 
             jsonrpc: "2.0", 

@@ -3,6 +3,7 @@ import { z } from "npm:zod";
 import { getConfigSync, loadConfig } from "@server/config.ts";
 import { getAllTools } from "@server/tools.ts";
 import { listAggregatedResources, readAggregatedResource, listAggregatedPrompts, getAggregatedPrompt } from "@server/upstream/index.ts";
+import { getFullServerInfo } from "@server/server_info.ts";
 
 export async function createMcpServer(): Promise<McpServer> {
   const server = new McpServer({
@@ -65,18 +66,15 @@ export async function createMcpServer(): Promise<McpServer> {
       description: "MCP 服务器的基本信息和状态",
       mimeType: "application/json"
     },
-    async (uri) => ({
-      contents: [{ 
-        uri: uri.href, 
-        text: JSON.stringify({
-          name: "deno-mcp-demo",
-          version: getConfigSync()?.version ?? "0.1.0",
-          uptime: Math.floor(Deno.osUptime()),
-          capabilities: ["tools", "resources", "prompts"],
-          timestamp: new Date().toISOString()
-        }, null, 2) 
-      }]
-    })
+    async (uri) => {
+      const info = await getFullServerInfo();
+      return {
+        contents: [{ 
+          uri: uri.href, 
+          text: JSON.stringify(info, null, 2) 
+        }]
+      };
+    }
   );
 
   server.registerResource(
@@ -87,10 +85,13 @@ export async function createMcpServer(): Promise<McpServer> {
       description: "MCP 服务器使用说明",
       mimeType: "text/markdown"
     },
-    async (uri) => ({
-      contents: [{ 
-        uri: uri.href, 
-        text: `# MCP 服务器使用帮助
+    async (uri) => {
+      const tools = await getAllTools();
+      const toolCount = tools.length;
+      return {
+        contents: [{ 
+          uri: uri.href, 
+          text: `# MCP 服务器使用帮助
 
 ## 可用资源
 
@@ -106,10 +107,11 @@ export async function createMcpServer(): Promise<McpServer> {
 
 ## 可用工具
 
-查看 tools/list 获取完整工具列表
+当前已注册 ${toolCount} 个工具，查看 tools/list 获取完整工具列表
 ` 
-      }]
-    })
+        }]
+      };
+    }
   );
 
   server.registerResource(
