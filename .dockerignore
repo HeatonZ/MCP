@@ -1,9 +1,42 @@
+# 依赖目录
 node_modules
 frontend/node_modules
+**/node_modules
+
+# 构建产物（使用多阶段构建时不需要）
+**/dist
+**/build
+public
+
+# 开发文件
 **/.DS_Store
 **/.git
 **/.gitignore
 **/.vscode
-**/dist
-**/build
-**/coverage 
+**/.cursor
+**/.idea
+
+# 测试和文档
+**/coverage
+**/tests
+**/*.test.ts
+**/*.spec.ts
+docs
+
+# 日志和临时文件
+*.log
+nohup.out
+server.log
+**/*.tmp
+**/*.temp
+
+# 本地配置（如果有敏感信息）
+.env.local
+.env.*.local
+
+# Deno 缓存
+deno-dir
+.deno
+
+# 脚本（构建时不需要）
+scripts
