@@ -17,7 +17,7 @@ COPY shared ../shared
 COPY frontend ./
 
 # 使用 Deno 构建前端
-RUN deno run -A npm:vite build
+RUN deno task build
 
 # ========== 运行阶段 ==========
 FROM base AS runner
