@@ -2,29 +2,15 @@
 
 FROM denoland/deno:latest AS base
 
-# ========== 前端构建阶段 ==========
-FROM base AS frontend
-WORKDIR /app/frontend
-
-# 设置 npm 淘宝源
-ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
-
-# 复制前端依赖配置
-COPY frontend/deno.json frontend/deno.lock* ./
-COPY shared ../shared
-
-# 复制前端源码
-COPY frontend ./
-
-# 使用 Deno 构建前端
-RUN deno task build
-
 # ========== 运行阶段 ==========
 FROM base AS runner
 WORKDIR /app
 
 # 创建非 root 用户（安全最佳实践）
 RUN addgroup -g 1000 deno && adduser -u 1000 -G deno -s /bin/sh -D deno
+
+# 设置 npm 淘宝源（用于 Deno 下载 npm 包）
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
 
 # 复制依赖配置文件（利用 Docker 缓存层）
 COPY deno.jsonc deno.lock import_map.json ./
@@ -34,8 +20,8 @@ COPY server ./server
 COPY shared ./shared
 COPY config ./config
 
-# 复制前端产物
-COPY --from=frontend /app/frontend/dist ./public
+# 复制前端产物（需要先在本地构建：cd frontend && deno task build）
+COPY frontend/dist ./public
 
 # 运行时环境变量
 ENV DENO_DIR=/deno-dir
