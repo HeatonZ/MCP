@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1.7-labs
 
-FROM denoland/deno:alpine-2.1.4 AS deno
+FROM denoland/deno:latest AS deno
 
-FROM node:20-alpine AS frontend
+FROM node:20 AS frontend
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
 COPY frontend/package.json frontend/pnpm-lock.yaml* ./
