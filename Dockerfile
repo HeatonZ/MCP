@@ -6,6 +6,9 @@ FROM denoland/deno:latest AS base
 FROM base AS frontend
 WORKDIR /app/frontend
 
+# 设置 npm 淘宝源
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+
 # 复制前端依赖配置
 COPY frontend/deno.json frontend/deno.lock* ./
 COPY shared ../shared
