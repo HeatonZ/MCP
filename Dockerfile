@@ -1,16 +1,23 @@
 # syntax=docker/dockerfile:1.7-labs
 
-FROM denoland/deno:latest AS deno
+FROM denoland/deno:latest AS base
 
-FROM node:20 AS frontend
-WORKDIR /app
-RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
-COPY frontend/package.json frontend/pnpm-lock.yaml* ./
-RUN pnpm install --frozen-lockfile || pnpm install
+# ========== 前端构建阶段 ==========
+FROM base AS frontend
+WORKDIR /app/frontend
+
+# 复制前端依赖配置
+COPY frontend/deno.json frontend/deno.lock* ./
+COPY shared ../shared
+
+# 复制前端源码
 COPY frontend ./
-RUN pnpm build
 
-FROM deno AS runner
+# 使用 Deno 构建前端
+RUN deno run -A npm:vite build
+
+# ========== 运行阶段 ==========
+FROM base AS runner
 WORKDIR /app
 
 # 创建非 root 用户（安全最佳实践）
@@ -25,7 +32,7 @@ COPY shared ./shared
 COPY config ./config
 
 # 复制前端产物
-COPY --from=frontend /app/dist ./public
+COPY --from=frontend /app/frontend/dist ./public
 
 # 运行时环境变量
 ENV DENO_DIR=/deno-dir
