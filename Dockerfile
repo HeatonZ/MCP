@@ -6,9 +6,6 @@ FROM denoland/deno:latest AS base
 FROM base AS runner
 WORKDIR /app
 
-# 创建非 root 用户（安全最佳实践）
-RUN addgroup -g 1000 deno && adduser -u 1000 -G deno -s /bin/sh -D deno
-
 # 设置 npm 淘宝源（用于 Deno 下载 npm 包）
 ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
 
@@ -25,13 +22,10 @@ COPY frontend/dist ./public
 
 # 运行时环境变量
 ENV DENO_DIR=/deno-dir
-RUN mkdir -p $DENO_DIR && chown -R deno:deno /app $DENO_DIR
+RUN mkdir -p $DENO_DIR
 
 # 预抓取依赖
 RUN deno cache --import-map=import_map.json server/main.ts server/stdio.ts || true
-
-# 切换到非 root 用户
-USER deno
 
 # 健康检查（每30秒检查一次，超时10秒）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
