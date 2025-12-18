@@ -1,4 +1,4 @@
-import { join, normalize, fromFileUrl } from "https://deno.land/std@0.224.0/path/mod.ts";
+import { join, normalize, fromFileUrl } from "@std/path";
 
 function projectRoot(): string {
   const here = new URL("../", import.meta.url);

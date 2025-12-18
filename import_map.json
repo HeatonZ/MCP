@@ -4,6 +4,7 @@
 		"@server-tools/": "./server/tools/",
 		"@server-config/": "./server/config/",
 		"@server-security/": "./server/security/",
-		"@shared/": "./shared/"
+		"@shared/": "./shared/",
+		"@std/path": "jsr:@std/path"
 	}
 } 

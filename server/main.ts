@@ -1,5 +1,5 @@
 import { loadConfig, saveConfig, getConfigSync, startConfigWatcher } from "@server/config.ts";
-import { join, fromFileUrl, extname } from "https://deno.land/std@0.224.0/path/mod.ts";
+import { join, fromFileUrl, extname } from "@std/path";
 import { getAllTools, initPlugins, disposePlugins } from "@server/tools.ts";
 import { createMcpServer } from "@server/mcp.ts";
 import { createSseEndpoints } from "@server/transport/http_sse.ts";

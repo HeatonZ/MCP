@@ -21,7 +21,7 @@
     "build:frontend": "cd frontend && deno task build && cd .. && mkdir -p public && cp -r frontend/dist/* public/",
     "dev:frontend": "cd frontend && deno task dev",
     "install:frontend": "cd frontend && deno install --allow-scripts",
-    "prod": "deno run -A server/main.ts",
+    "prod": "deno run -A --import-map=import_map.json server/main.ts",
     
     "typecheck": "deno check --import-map=import_map.json server/main.ts server/stdio.ts",
     "version:set": "deno run -A scripts/version.ts set",
