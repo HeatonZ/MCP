@@ -4,7 +4,6 @@ frontend/node_modules
 **/node_modules
 
 # 构建产物（使用多阶段构建时不需要）
-**/dist
 **/build
 public
 
