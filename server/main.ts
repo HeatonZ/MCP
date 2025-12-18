@@ -1,5 +1,5 @@
 import { loadConfig, saveConfig, getConfigSync, startConfigWatcher } from "@server/config.ts";
-import { join, fromFileUrl, extname } from "@std/path";
+import { join, fromFileUrl, extname } from "jsr:@std/path";
 import { getAllTools, initPlugins, disposePlugins } from "@server/tools.ts";
 import { createMcpServer } from "@server/mcp.ts";
 import { createSseEndpoints } from "@server/transport/http_sse.ts";

@@ -2,7 +2,7 @@ import type { AppConfig } from "@shared/types/system.ts";
 import { defaultConfig } from "@server/config/defaults.ts";
 import { AppConfigSchema } from "@server/config/schema.ts";
 import { applyEnvOverrides } from "@server/config/env.ts";
-import { fromFileUrl } from "@std/path";
+import { fromFileUrl } from "jsr:@std/path";
 
 const CONFIG_PATH = new URL("../config/config.json", import.meta.url);
 const LOCAL_OVERRIDE_PATH = new URL("../config/config.local.json", import.meta.url);

@@ -1,4 +1,4 @@
-import { join, normalize, fromFileUrl } from "@std/path";
+import { join, normalize, fromFileUrl } from "jsr:@std/path";
 
 function projectRoot(): string {
   const here = new URL("../", import.meta.url);
