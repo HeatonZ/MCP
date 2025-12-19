@@ -632,10 +632,12 @@ export async function initUpstreams(): Promise<void> {
       setNamespace(u.name, ns);
       setCounts(u.name, { toolCount: tools.length });
       
-      // 启动健康监控
-      const reconnectConfig = u.reconnect ?? { enabled: true };
-      if (reconnectConfig.enabled !== false) {
-        startHealthMonitoring(u.name);
+      // 只对 stdio 类型启用健康监控（HTTP/SSE/WS 是无状态的，按需检查即可）
+      if (isStdio(u)) {
+        const reconnectConfig = u.reconnect ?? { enabled: true };
+        if (reconnectConfig.enabled !== false) {
+          startHealthMonitoring(u.name);
+        }
       }
     } catch (e) {
       console.log("Upstream connection failed for", u.name, ":", e);
@@ -646,10 +648,12 @@ export async function initUpstreams(): Promise<void> {
       );
       markDisconnected(u.name, String(e));
 
-      // 如果启用了重连，尝试重连
-      const reconnectConfig = u.reconnect ?? { enabled: true };
-      if (reconnectConfig.enabled !== false) {
-        scheduleReconnect(u.name);
+      // 只对 stdio 类型启用重连（HTTP/SSE/WS 是无状态的，按需连接即可）
+      if (isStdio(u)) {
+        const reconnectConfig = u.reconnect ?? { enabled: true };
+        if (reconnectConfig.enabled !== false) {
+          scheduleReconnect(u.name);
+        }
       }
     }
   }

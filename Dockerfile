@@ -29,7 +29,7 @@ RUN deno cache --import-map=import_map.json server/main.ts server/stdio.ts || tr
 
 # 健康检查（每30秒检查一次，超时10秒）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8787/api/health || exit 1
+  CMD deno eval "const r = await fetch('http://localhost:8787/api/health'); Deno.exit(r.ok ? 0 : 1)" || exit 1
 
 EXPOSE 8787
 
